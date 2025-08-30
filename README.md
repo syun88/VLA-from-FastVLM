@@ -10,3 +10,17 @@ VLA-from-FastVLM/
  ├─ ros2_node.py       # step4: ROS2統合（実機動作用）
  └─ models/            # Action Expertの定義など
 ```
+
+
+
+
+# ros2 (一旦無視)
+```bash
+
+#### 例: パラメータはros2の--ros-argsで上書き可
+ros2 run your_pkg ros2_node.py --ros-args \
+  -p ckpt:=runs/exp1/best.pt \
+  -p joint_names:="[joint1,joint2,joint3,joint4,joint5,joint6,gripper,aux]" \
+  -p scaler_json:=data/scaler.json \
+  -p rate_hz:=20.0 -p delta_limit:=0.05 -p vel_limit:=0.5
+```
