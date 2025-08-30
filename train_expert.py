@@ -22,17 +22,22 @@ from transformers import AutoTokenizer, AutoModelForCausalLM
 # -----------------------------
 # Expert MLP（Step2と同じ）
 # -----------------------------
+# train_expert.py / latent_expert.py の ActionExpertMLP を差し替え
 class ActionExpertMLP(nn.Module):
     def __init__(self, d_model: int, action_dim: int = 8):
         super().__init__()
-        self.net = nn.Sequential(
+        self.backbone = nn.Sequential(
             nn.LayerNorm(d_model),
             nn.Linear(d_model, 512), nn.SiLU(),
             nn.Linear(512, 256), nn.SiLU(),
-            nn.Linear(256, action_dim),
         )
+        self.head = nn.Linear(256, action_dim)
+
     def forward(self, z: torch.Tensor) -> torch.Tensor:
-        return self.net(z)
+        x = self.backbone(z)
+        x = self.head(x)
+        return torch.tanh(x)  # 出力を [-1,1] に拘束
+
 
 
 # -----------------------------
