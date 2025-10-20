@@ -6,7 +6,7 @@
 
 Apple が公開する FastVLM のチェックポイントは本リポジトリには含まれていません。まずは公式 [Model Zoo](https://github.com/apple/ml-fastvlm?tab=readme-ov-file#model-zoo) から必要なバリアントをダウンロードしてください。
 
-1. `FastVLM-Base` など目的の重みを選択します。
+1. `FastVLM-0.5B` など目的の重みを選択します。
 2. `.safetensors` / `.pt` と付随する tokenizer/config を入手し、`models/apple-fastvlm` など任意のフォルダへ保存します。
 3. 付属のスクリプトでまとめて取得することも可能です。
 
@@ -16,6 +16,18 @@ Apple が公開する FastVLM のチェックポイントは本リポジトリ�
     ```
 
 Hugging Face のプライベートリポジトリにアップロードして `model_id` を指定する運用も可能です。取得した重みには Apple の `LICENSE`, `LICENSE_MODEL`, `ACKNOWLEDGEMENTS` を必ず同梱し、ライセンス条件を遵守してください。
+
+
+> **重要**  
+> CDN の zip には重みとメタデータのみが含まれ、Transformers が必要とする Python モジュール（例: `configuration_llava_qwen2.py`）は入っていません。以下のように Hugging Face CLI で公式スナップショット（例: `apple/FastVLM-0.5B`）を取得し、同じディレクトリへ展開してください。
+>
+> ```bash
+> hf download apple/FastVLM-0.5B \
+>   --local-dir models/apple-fastvlm/FastVLM-0.5B \
+>   --local-dir-use-symlinks False
+> ```
+>
+> この操作によって重みとソースコードが揃い、`AutoModel` が `llava_qwen2` を認識できるようになります。
 
 ## 特長
 - ✅ **エンドツーエンド学習**：Accelerate ベースの軽量トレーナーで FastVLM を Aloha データセットに合わせて微調整。
@@ -77,7 +89,7 @@ export HF_HUB_DISABLE_XET=1
 ```bash
 python scripts/train.py \
   --output_dir=outputs/train/fastvlm_aloha \
-  --model_id=apple/FastVLM-base \
+  --model_id=$FASTVLM_BACKBONE_PATH/FastVLM-0.5B \
   --dataset_repo_id=lerobot/aloha_sim_insertion_human_image \
   --batch_size=2 \
   --num_workers=2 \

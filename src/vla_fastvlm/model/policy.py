@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List
 
 import torch
@@ -12,7 +12,7 @@ from .fastvlm_adapter import FastVLMBackbone, FastVLMBackboneConfig
 
 @dataclass
 class FastVLMPolicyConfig:
-    backbone: FastVLMBackboneConfig = FastVLMBackboneConfig()
+    backbone: FastVLMBackboneConfig = field(default_factory=FastVLMBackboneConfig)
     state_dim: int = 14
     action_dim: int = 14
     hidden_dim: int = 1024

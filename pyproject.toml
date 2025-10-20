@@ -22,36 +22,36 @@ classifiers = [
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
 ]
 dependencies = [
-    "accelerate>=0.27",
-    "datasets>=2.16",
-    "einops>=0.7",
-    "gymnasium>=0.29",
-    "huggingface-hub>=0.20",
-    "imageio>=2.33",
-    "mujoco>=3.1",
-    "numpy>=1.24",
-    "pillow>=10.2",
-    "pyyaml>=6.0",
-    "torch>=2.2",
-    "torchvision>=0.17",
-    "transformers>=4.38",
-    "tqdm>=4.66",
-    "tyro>=0.6.6",
+    "accelerate",
+    "datasets",
+    "einops",
+    "gymnasium",
+    "huggingface-hub",
+    "imageio",
+    "mujoco",
+    "numpy",
+    "pillow",
+    "pyyaml",
+    "torch",
+    "torchvision",
+    "transformers",
+    "tqdm",
+    "tyro",
 ]
 
 [project.optional-dependencies]
 sim = [
     "gym-aloha",
-    "moviepy>=1.0",
+    "moviepy",
 ]
 real = [
-    "hidapi>=0.14",
-    "pyserial>=3.5",
+    "hidapi",
+    "pyserial",
 ]
 dev = [
-    "black>=24.4",
-    "ruff>=0.3",
-    "pytest>=8.1",
+    "black",
+    "ruff",
+    "pytest",
 ]
 
 [tool.setuptools.packages.find]

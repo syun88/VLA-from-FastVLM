@@ -4,12 +4,17 @@ import json
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from typing import Dict, Iterable, Optional
+import logging
 
 import torch
 from accelerate import Accelerator
 from accelerate.utils import set_seed
+from accelerate.state import AcceleratorState
 
 from vla_fastvlm.device import move_batch_to_device
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -47,12 +52,7 @@ class Trainer:
         self.config = config or TrainingConfig()
         set_seed(self.config.seed)
 
-        self.accelerator = Accelerator(
-            gradient_accumulation_steps=self.config.gradient_accumulation_steps,
-            mixed_precision=self.config.mixed_precision,
-            log_with=self.config.report_to,
-            project_dir=self.config.output_dir,
-        )
+        self.accelerator = self._create_accelerator()
         self.model = model
         self.train_dataloader = train_dataloader
         self.eval_dataloader = eval_dataloader
@@ -86,6 +86,62 @@ class Trainer:
         self.global_step = 0
         self.epoch = 0
 
+    def _create_accelerator(self) -> Accelerator:
+        desired_precision = self.config.mixed_precision
+        attempted: set[str | None] = set()
+
+        while True:
+            try:
+                accelerator = Accelerator(
+                    gradient_accumulation_steps=self.config.gradient_accumulation_steps,
+                    mixed_precision=desired_precision,
+                    log_with=self.config.report_to,
+                    project_dir=self.config.output_dir,
+                )
+                if desired_precision != self.config.mixed_precision:
+                    self.config.mixed_precision = desired_precision
+                return accelerator
+            except ValueError as exc:
+                message = str(exc).lower()
+                has_mixed_kw = ("mixed precision" in message) or ("mixed_precision" in message)
+                if (desired_precision is None) or (desired_precision in attempted) or not has_mixed_kw:
+                    raise
+
+                attempted.add(desired_precision)
+                fallback = self._fallback_precision(str(desired_precision))
+                if fallback == desired_precision:
+                    raise
+
+                logger.warning(
+                    "Mixed precision '%s' not supported on this device (%s); falling back to '%s'.",
+                    desired_precision,
+                    exc,
+                    fallback,
+                )
+                AcceleratorState._reset_state()
+                desired_precision = fallback
+
+    def _serialize_hparam(self, value):
+        if isinstance(value, (int, float, bool, str, torch.Tensor)):
+            return value
+        if value is None:
+            return "none"
+        return str(value)
+
+    def _build_tracker_config(self) -> Dict[str, int | float | str | bool | torch.Tensor]:
+        raw_config = asdict(self.config)
+        return {key: self._serialize_hparam(val) for key, val in raw_config.items()}
+
+    def _fallback_precision(self, failed_precision: str) -> str | None:
+        precision = failed_precision.lower()
+        if precision in {"bf16", "bfloat16"}:
+            if torch.cuda.is_available():
+                return "fp16"
+            return "no"
+        if precision in {"fp16", "float16"}:
+            return "no"
+        return failed_precision
+
     def fit(self) -> None:
         output_dir = Path(self.config.output_dir)
         if self.accelerator.is_local_main_process:
@@ -95,7 +151,8 @@ class Trainer:
             with open(output_dir / "training_config.json", "w", encoding="utf-8") as f:
                 json.dump(asdict(self.config), f, indent=2)
 
-        self.accelerator.init_trackers("vla_fastvlm", config=asdict(self.config))
+        tracker_config = self._build_tracker_config()
+        self.accelerator.init_trackers("vla_fastvlm", config=tracker_config)
 
         if self.config.resume_from:
             self._load_checkpoint(self.config.resume_from)

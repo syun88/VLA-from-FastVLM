@@ -4,6 +4,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+import logging
 
 import tyro
 
@@ -16,6 +17,9 @@ from vla_fastvlm.model.policy import FastVLMPolicy, FastVLMPolicyConfig
 from vla_fastvlm.model.fastvlm_adapter import FastVLMBackboneConfig
 from vla_fastvlm.training import Trainer, TrainingConfig
 from vla_fastvlm.utils import configure_logging
+
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -80,26 +84,36 @@ def main(args: TrainArgs) -> None:
         num_workers=args.num_workers,
     )
 
+    eval_loader = None
     if args.eval_split:
-        if args.streaming:
-            eval_dataset = AlohaIterableDataset(
-                split=args.eval_split,
-                repo_id=args.dataset_repo_id,
+        try:
+            if args.streaming:
+                eval_dataset = AlohaIterableDataset(
+                    split=args.eval_split,
+                    repo_id=args.dataset_repo_id,
+                )
+            else:
+                eval_dataset = AlohaDataset(
+                    split=args.eval_split,
+                    repo_id=args.dataset_repo_id,
+                    limit_samples=args.limit_eval_samples,
+                )
+            eval_loader = create_aloha_dataloader(
+                eval_dataset,
+                batch_size=args.eval_batch_size,
+                shuffle=False,
+                num_workers=args.num_workers,
             )
-        else:
-            eval_dataset = AlohaDataset(
-                split=args.eval_split,
-                repo_id=args.dataset_repo_id,
-                limit_samples=args.limit_eval_samples,
-            )
-        eval_loader = create_aloha_dataloader(
-            eval_dataset,
-            batch_size=args.eval_batch_size,
-            shuffle=False,
-            num_workers=args.num_workers,
-        )
-    else:
-        eval_loader = None
+        except ValueError as exc:
+            if "Unknown split" in str(exc):
+                logger.warning(
+                    "Eval split '%s' not found for dataset %s; continuing without evaluation.",
+                    args.eval_split,
+                    args.dataset_repo_id,
+                )
+                eval_loader = None
+            else:
+                raise
 
     trainer_config = TrainingConfig(
         output_dir=args.output_dir,
@@ -125,4 +139,4 @@ def main(args: TrainArgs) -> None:
 
 
 if __name__ == "__main__":
-    tyro.cli(main)
+    main(tyro.cli(TrainArgs))
