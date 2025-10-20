@@ -180,11 +180,9 @@ bash scripts/download_fastvlm.sh ./models/apple-fastvlm
 
 ## 9. 設定ファイル
 
-## 8. 設定ファイル
-
 `configs/train_aloha.yaml` は README の手順を再現するための参考設定です。CLI に直接 YAML を読み込ませる機能はありませんが、Python スニペット等で `--key=value` 形式に展開すると便利です。
 
-## 9. ライセンス
+## 10. ライセンス
 
 - 本リポジトリのオリジナルコードは MIT License（`LICENSE`）で公開しています。
 - FastVLM に関するコード/アセットは Apple Inc. が著作権を保有し、`third_party/ml-fastvlm/LICENSE` に記載された条件で再配布しています。
