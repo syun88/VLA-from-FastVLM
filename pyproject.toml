@@ -1,0 +1,71 @@
+[build-system]
+requires = ["setuptools>=65", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "vla-fastvlm"
+version = "0.1.0"
+description = "Vision-Language-Action pipeline built on top of Apple's FastVLM models for Aloha manipulation tasks."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [
+    { name = "Syun Robotics Lab" }
+]
+keywords = ["robotics", "vision-language-action", "fastvlm", "reinforcement-learning", "lerobot", "aloha"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+]
+dependencies = [
+    "accelerate>=0.27",
+    "datasets>=2.16",
+    "einops>=0.7",
+    "gymnasium>=0.29",
+    "huggingface-hub>=0.20",
+    "imageio>=2.33",
+    "mujoco>=3.1",
+    "numpy>=1.24",
+    "pillow>=10.2",
+    "pyyaml>=6.0",
+    "torch>=2.2",
+    "torchvision>=0.17",
+    "transformers>=4.38",
+    "tqdm>=4.66",
+    "tyro>=0.6.6",
+]
+
+[project.optional-dependencies]
+sim = [
+    "gym-aloha",
+    "moviepy>=1.0",
+]
+real = [
+    "hidapi>=0.14",
+    "pyserial>=3.5",
+]
+dev = [
+    "black>=24.4",
+    "ruff>=0.3",
+    "pytest>=8.1",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.black]
+line-length = 100
+target-version = ["py311"]
+
+[tool.ruff]
+line-length = 100
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E203", "E501"]
+
+[tool.pytest.ini_options]
+addopts = "-q"
+pythonpath = ["src"]
