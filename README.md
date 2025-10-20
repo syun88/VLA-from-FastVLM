@@ -1,5 +1,7 @@
 # VLA-from-FastVLM
 
+日本語解説は [`README_JP.md`](README_JP.md) を参照してください。
+
 Vision-Language-Action stack that extends Apple's FastVLM models with an action head for robotic manipulation. The pipeline fine-tunes FastVLM on the [lerobot/aloha_sim_insertion_human_image](https://huggingface.co/datasets/lerobot/aloha_sim_insertion_human_image) dataset and runs the resulting policy inside the `gym_aloha` simulator or on real Aloha hardware.
 
 ## Highlights
