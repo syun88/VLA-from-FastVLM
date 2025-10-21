@@ -1,152 +1,172 @@
 # VLA-from-FastVLM
 
-日本語解説は [`README_JP.md`](README_JP.md) を参照してください。
+日本語版ガイドは [`README_JP.md`](README_JP.md) を参照してください。
 
-Vision-Language-Action stack that extends Apple's FastVLM models with an action head for robotic manipulation. The pipeline fine-tunes FastVLM on the [lerobot/aloha_sim_insertion_human_image](https://huggingface.co/datasets/lerobot/aloha_sim_insertion_human_image) dataset and runs the resulting policy inside the `gym_aloha` simulator or on real Aloha hardware.
+End-to-end Vision-Language-Action (VLA) pipeline that fine-tunes Apple’s FastVLM models on the [lerobot/aloha_sim_insertion_human_image](https://huggingface.co/datasets/lerobot/aloha_sim_insertion_human_image) dataset, evaluates on held-out demonstrations, and rolls policies inside the `gym_aloha` MuJoCo simulator or on real Aloha hardware.
 
-## Highlights
-- ✅ **End-to-end training**: fine-tune FastVLM on Aloha insertion demonstrations with a custom PyTorch trainer built on top of `accelerate`.
-- 🖥️ **Automatic device selection**: CUDA → MPS → CPU fallback with manual override via the `FASTVLM_FORCE_DEVICE` environment variable.
-- 🕹️ **Simulation-ready**: roll out policies in MuJoCo-powered Aloha simulator with optional RGB video export.
-- 🤖 **Real robot loop**: structured runner composed with a pluggable hardware interface for live control without ROS2.
-- 🔁 **Future fine-tuning**: reproducible configs and checkpoint format (state dict + JSON config) for continued training or evaluation.
+---
 
-## Repository Layout
-
-```
-.
-├── configs/                # Ready-to-use configuration files
-├── scripts/                # CLI entry-points for training, evaluation, sim, and real control
-├── src/vla_fastvlm/        # Core Python package
-│   ├── data/               # Hugging Face dataset wrappers
-│   ├── model/              # FastVLM backbone adapter + policy head
-│   ├── training/           # Accelerate-based trainer
-│   ├── sim/                # gym_aloha rollout helpers
-│   ├── real/               # Real robot control loop abstractions
-│   └── utils/              # Logging, checkpoint utilities, device helpers
-└── pyproject.toml
-```
-
-## 1. Installation
+## Quick Start
 
 ```bash
+# 1) Environment
 python -m venv .venv
 source .venv/bin/activate
-pip install --upgrade pip
+python -m pip install --upgrade pip
 pip install -e ".[sim,real]"
-```
 
-> **Note**  
-> - `sim` extra installs `gym-aloha` and video writers.  
-> - `real` extra installs serial/HID dependencies for live hardware control.
-
-## 2. Prepare the Dataset
-
-The project trains on the authoritative dataset:
-
-```bash
-# Downloads and caches the dataset locally
+# 2) (Optional) Cache the dataset locally
 python - <<'PY'
 from datasets import load_dataset
 load_dataset("lerobot/aloha_sim_insertion_human_image", split="train")
 PY
-```
 
-No dummy data is created—the scripts stream real episodes directly from the Hugging Face Hub.
-
-## 3. Fine-tune FastVLM
-
-`scripts/train.py` exposes all relevant knobs. Reproduce Apple π₀-style command:
-
-```bash
+# 3) Fine-tune FastVLM (10 epochs by default)
+# python scripts/train.py \
+#   --output-dir=outputs/train/fastvlm_aloha \
+#   --model-id=apple/FastVLM-base \
+#   --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
+#   --batch-size=2 --num-workers=2 --num-epochs=10 --mixed-precision=bf16
+# or
 python scripts/train.py \
-  --output-dir=outputs/train/fastvlm_aloha \
-  --model-id=apple/FastVLM-base \
-  --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
-  --batch-size=2 \
-  --num-workers=2 \
-  --num-epochs=10 \
-  --mixed-precision=bf16
-```
+  --output-dir outputs/train/fastvlm_aloha \
+  --model-id "$FASTVLM_BACKBONE_PATH/llava-fastvithd_0.5b_stage3" \
+  --dataset-repo-id lerobot/aloha_sim_insertion_human_image \
+  --batch-size 2 \
+  --num-workers 0 \
+  --num-epochs 10 \
+  --max-steps 1000
 
-Training artifacts:
-
-- `training_config.json`: frozen trainer configuration.
-- `checkpoints/step-*/policy_config.json`: serialized `FastVLMPolicyConfig`.
-- `checkpoints/step-*/policy_state_dict.pt`: PyTorch weights.
-
-Continue fine-tuning by pointing `--checkpoint-dir` to any previous checkpoint and using `--resume-from` in `TrainingConfig`.
-
-## 4. Offline Evaluation (Dataset MSE)
-
-```bash
+# 4) Evaluate MSE on the dataset (falls back to train split automatically)
 python scripts/eval_dataset.py \
   --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
   --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
   --split=validation
-```
 
-> The public `lerobot/aloha_sim_insertion_human_image` dataset only exposes a `train` split.  
-> Leave the default `--allow-missing-split` flag enabled (fallbacks to `--split=train`) or pass `--split=train` explicitly when running the evaluator.
-
-## 5. Simulation Rollout
-
-Ensure MuJoCo ≥ 3.1 is installed. The script auto-selects a rendering backend: `egl` on Linux, `glfw` on macOS, and `d3d11` on Windows. Override via `MUJOCO_GL` if you need a different backend or a headless configuration.
-
-Then:
-
-```bash
+# 5) Run MuJoCo simulation rollouts with MP4 logging
 python scripts/run_sim.py \
   --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
   --num-episodes=10 \
   --video-dir=outputs/eval/pi0_aloha
 ```
 
-The command spins up `gym_aloha/AlohaInsertion-v0`, renders each episode, and writes MP4 files into the requested directory.
-
-## 6. Real Robot Loop (Future Hardware Use)
-
-Implement `AlohaHardwareInterface` with your I/O stack (e.g., Dynamixel bus or a custom bridge) and pass the dotted class path to the runner:
-
-```python
-# my_robot/interface.py
-from vla_fastvlm.real import AlohaHardwareInterface
-import numpy as np
-
-class CustomAlohaInterface(AlohaHardwareInterface):
-    ...
-```
-
-```bash
-python scripts/run_real.py \
-  --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
-  --interface-cls=my_robot.interface.CustomAlohaInterface \
-  --interface-kwargs-json="{\"port\":\"/dev/ttyUSB0\",\"camera_topic\":\"camera/top\"}"
-```
-
-The runner opens the hardware connection, repeatedly queries the latest observation (`state` + RGB image), predicts the next joint command through the FastVLM policy, and streams it back to the robot at the configured control frequency.
-
-## 7. Device Selection
-
-Device choice is automatic:
-
-1. CUDA GPU (if available).
-2. Apple MPS backend.
-3. CPU fallback.
-
-Override by exporting `FASTVLM_FORCE_DEVICE=cpu` or `FASTVLM_FORCE_DEVICE=cuda`. Individual scripts also expose `--device-preference` to pin the runtime explicitly.
-
-## 8. Configuration Files
-
-- `configs/train_aloha.yaml`: baseline hyperparameters matching the README steps. Use it as a reference when overriding CLI flags (for example, load it with a short Python snippet to expand into `--key=value` pairs).
-
-## 9. Roadmap
-
-- ✅ Simulation control loop and dataset fine-tuning.
-- 🔜 Integrate hardware-specific drivers for Aloha stations.
-- 🔜 Add evaluation suites for success-rate scoring and rollout logging.
-- 🔜 Extend to additional tasks (transfer cube, towel) and continuous learning.
+Each CLI has `--help` powered by `tyro`; all flags use kebab-case (`--checkpoint-dir`, `--num-epochs`, …).
 
 ---
 
-Feel free to open issues for enhancements or share checkpoints through the Hugging Face Hub under your organization.
+## Requirements
+
+- Python ≥ 3.10 with PyTorch ≥ 2.1 (CUDA, MPS, or CPU).
+- MuJoCo 3.1+ for simulation (`MUJOCO_GL` is auto-selected per OS).
+- `gym-aloha` ≥ 0.1.3 (installed through the `[sim]` extra).
+- Optional: Apple MPS backend (macOS 13+) or NVIDIA GPU.
+- For real hardware: implement a subclass of `AlohaHardwareInterface` and install the `[real]` extra (serial / HID drivers).
+
+---
+
+## Project Layout
+
+```
+.
+├── configs/                # Example YAML configs
+├── scripts/                # CLI entry points: train / eval / sim / real
+├── src/vla_fastvlm/        # Python package
+│   ├── data/               # Hugging Face dataset wrappers
+│   ├── model/              # FastVLM adapter and policy head
+│   ├── training/           # Accelerate-based trainer & config dataclasses
+│   ├── sim/                # MuJoCo rollout helpers
+│   ├── real/               # Real robot loop abstractions
+│   └── utils/              # Logging, checkpoint, and device helpers
+└── outputs/                # Default artifacts (checkpoints, eval videos, logs)
+```
+
+---
+
+## Dataset Notes
+
+- The public Aloha dataset only exposes a `train` split. `eval_dataset.py` defaults to `--allow-missing-split` so `--split=validation` gracefully falls back to `train` and prints a notice. Disable with `--allow-missing-split=false` if you prefer hard failures.
+- Use `--streaming` to iterate from the Hub without local downloads. Both `AlohaDataset` and `AlohaIterableDataset` accept `--limit-samples` (offline only) for quicker smoke tests.
+- Set `HF_HOME` to relocate the Hugging Face cache. The legacy `TRANSFORMERS_CACHE` warning can be ignored or replaced with `HF_HOME`.
+
+---
+
+## Training (`scripts/train.py`)
+
+- Hyperparameters live in the `TrainArgs` dataclass. Defaults: 10 epochs, batch size 4, streaming disabled.
+- `num_epochs` is the stopping criterion when `max_steps` is `null`; adjust either flag to control runtime.
+- Outputs under `outputs/train/<run_name>/`:
+  - `training_config.json`: frozen `TrainingConfig` including `num_epochs`/`max_steps`.
+  - `checkpoints/step-*/`: `policy_state_dict.pt` (PyTorch weights) and `policy_config.json`.
+  - TensorBoard events (`--report-to tensorboard`). Launch with `tensorboard --logdir outputs/train/fastvlm_aloha`.
+- Resume from checkpoints by passing `--checkpoint-dir <previous_run>/checkpoints/step-XXXX --resume-from step-XXXX`.
+
+---
+
+## Evaluation (`scripts/eval_dataset.py`)
+
+- Computes per-action MSE on a dataset split using the frozen policy.
+- Batch-related flags mirror training (`--batch-size`, `--num-workers`, `--streaming`).
+- On Apple MPS you may see `pin_memory` warnings; they are harmless because pinned memory is CPU-only today.
+- Sample output (from `eval_log.txt`):
+  ```
+  [eval_dataset] Split 'validation' not found; using 'train' instead.
+  MSE on split 'train': 0.004554
+  ```
+- For faster smoke tests, combine `--limit-samples` and `--batch-size 1`.
+
+---
+
+## Simulation (`scripts/run_sim.py`)
+
+- Wraps `gym_aloha/AlohaInsertion-v0` with auto-rendering, MP4 export, and device selection.
+- Rendering backend defaults per OS: `egl` (Linux), `glfw` (macOS), `d3d11` (Windows). Override with `MUJOCO_GL`.
+- The FastVLM adapter resizes simulator frames to ≥512 px using either the model’s image processor or a torchvision fallback. Expect a one-time warning if the fallback activates.
+- Key flags: `--num-episodes`, `--max-episode-steps`, `--task-instruction`, `--video-dir`, `--record-video=false`.
+- Result summary:
+  ```
+  Episode 000: reward=5.10 steps=287 success=✅
+  ```
+
+---
+
+## Real Robot Runner (`scripts/run_real.py`)
+
+- Provide an `AlohaHardwareInterface` subclass (e.g. `my_robot.interface.CustomAlohaInterface`) and optional JSON kwargs via `--interface-kwargs-json`.
+- The runner opens the hardware connection, streams observations through the policy, and prints episode statistics.
+- The same device selection logic applies (`--device-preference`, `FASTVLM_FORCE_DEVICE`).
+
+---
+
+## CLI Reference
+
+| Script | Purpose | Notable Flags |
+| ------ | ------- | ------------- |
+| `scripts/train.py` | Fine-tune FastVLM | `--output-dir`, `--model-id`, `--dataset-repo-id`, `--num-epochs`, `--max-steps`, `--mixed-precision` |
+| `scripts/eval_dataset.py` | Offline dataset MSE | `--checkpoint-dir`, `--split`, `--allow-missing-split`, `--limit-samples`, `--streaming` |
+| `scripts/run_sim.py` | MuJoCo rollouts with optional video | `--checkpoint-dir`, `--num-episodes`, `--max-episode-steps`, `--video-dir`, `--device-preference` |
+| `scripts/run_real.py` | Real robot control loop | `--checkpoint-dir`, `--interface-cls`, `--interface-kwargs-json`, `--task-instruction` |
+
+Run any script with `--help` to view the full schema.
+
+---
+
+## Troubleshooting
+
+- **Dataset split missing**: keep the default `--allow-missing-split` or use `--split=train`.
+- **Slow image processor warnings**: upgrade to the latest fast processors or set `TRANSFORMERS_USE_FAST=1`. The fallback resizer keeps inference stable.
+- **`pin_memory` warning on MPS**: expected; Apple’s backend ignores pinned memory for now.
+- **MuJoCo EGL errors on macOS**: the script now auto-selects `glfw`. Override manually if you prefer another backend.
+- **`gym_aloha` import errors**: ensure `pip install -e ".[sim]"` succeeded and MuJoCo is ≥ 3.1.
+- **Cache location**: set `export HF_HOME=/path/to/cache` to silence `TRANSFORMERS_CACHE` deprecation warnings.
+
+---
+
+## Licensing
+
+- Repository code: MIT License (`LICENSE`).
+- Apple FastVLM assets: governed by Apple’s licenses (`third_party/ml-fastvlm`).
+- Model weights are not bundled; download from Apple’s Model Zoo and respect `LICENSE_MODEL`/`ACKNOWLEDGEMENTS`.
+
+---
+
+Pull requests, issues, and dataset findings are always welcome. Share checkpoints on the Hugging Face Hub if you adapt the policy to new tasks!

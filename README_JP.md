@@ -1,106 +1,33 @@
-# VLA-from-FastVLM（日本語版ガイド）
+# VLA-from-FastVLM（日本語ガイド）
 
-このリポジトリは、Apple が公開した FastVLM モデルにアクションヘッドを追加し、LeRobot の Aloha Insertion データセットでファインチューニングする Vision-Language-Action（VLA）パイプラインです。学習済みポリシーは `gym_aloha` シミュレータおよび将来の実機制御で利用できます。
+English version is available in [`README.md`](README.md).
 
-## FastVLM モデルの取得
+Apple FastVLM モデルにアクションヘッドを追加し、[lerobot/aloha_sim_insertion_human_image](https://huggingface.co/datasets/lerobot/aloha_sim_insertion_human_image) データセットでファインチューニングして、`gym_aloha` シミュレータおよび実機 Aloha ロボットで動作可能な Vision-Language-Action (VLA) パイプラインを構築します。
 
-Apple が公開する FastVLM のチェックポイントは本リポジトリには含まれていません。まずは公式 [Model Zoo](https://github.com/apple/ml-fastvlm?tab=readme-ov-file#model-zoo) から必要なバリアントをダウンロードしてください。
+---
 
-1. `FastVLM-0.5B` など目的の重みを選択します。
-2. `.safetensors` / `.pt` と付随する tokenizer/config を入手し、`models/apple-fastvlm` など任意のフォルダへ保存します。
-3. 付属のスクリプトでまとめて取得することも可能です。
-
-    ```bash
-    bash scripts/download_fastvlm.sh ./models/apple-fastvlm
-    export FASTVLM_BACKBONE_PATH=$(pwd)/models/apple-fastvlm
-    ```
-
-Hugging Face のプライベートリポジトリにアップロードして `model_id` を指定する運用も可能です。取得した重みには Apple の `LICENSE`, `LICENSE_MODEL`, `ACKNOWLEDGEMENTS` を必ず同梱し、ライセンス条件を遵守してください。
-
-
-> **重要**  
-> CDN の zip には重みとメタデータのみが含まれ、Transformers が必要とする Python モジュール（例: `configuration_llava_qwen2.py`）は入っていません。以下のように Hugging Face CLI で公式スナップショット（例: `apple/FastVLM-0.5B`）を取得し、同じディレクトリへ展開してください。
->
-> ```bash
-> hf download apple/FastVLM-0.5B \
->   --local-dir models/apple-fastvlm/FastVLM-0.5B \
->   --local-dir-use-symlinks False
-> ```
->
-> この操作によって重みとソースコードが揃い、`AutoModel` が `llava_qwen2` を認識できるようになります。
-
-## 特長
-- ✅ **エンドツーエンド学習**：Accelerate ベースの軽量トレーナーで FastVLM を Aloha データセットに合わせて微調整。
-- 🖥️ **デバイス自動切り替え**：CUDA → MPS → CPU の優先順位で自動選択。環境変数 `FASTVLM_FORCE_DEVICE` で強制指定も可能。
-- 🕹️ **シミュレータ対応**：MuJoCo + `gym_aloha` によるシミュレーション実行と MP4 動画の保存に標準対応。
-- 🤖 **実機制御の導線**：ハードウェアインターフェースを差し替え可能な制御ループを実装。ROS2 などは未導入。
-- 🔁 **再学習しやすい構成**：チェックポイントを JSON 設定 + state dict で保存し、継続学習や推論に再利用可能。
-
-## ディレクトリ構成
-
-```
-.
-├── configs/                # 学習設定などのサンプル
-├── scripts/                # 学習 / 評価 / シミュレーション / 実機制御用 CLI
-├── src/vla_fastvlm/        # Python パッケージ本体
-│   ├── data/               # Hugging Face データセットラッパー
-│   ├── model/              # FastVLM バックボーン & アクションヘッド
-│   ├── training/           # Accelerate ベースのトレーナー
-│   ├── sim/                # `gym_aloha` 用シミュレーションユーティリティ
-│   ├── real/               # 実機制御用インターフェース
-│   └── utils/              # ログ / チェックポイント / デバイス補助関数
-└── pyproject.toml
-```
-
-## 1. セットアップ手順
+## クイックスタート
 
 ```bash
+# 1) 環境構築
 python -m venv .venv
 source .venv/bin/activate
-pip install --upgrade pip
+python -m pip install --upgrade pip
 pip install -e ".[sim,real]"
-```
 
-> **補足**  
-> - `sim` エキストラで `gym-aloha` (0.1.3 以上) や動画出力系ライブラリをインストール。  
-> - `real` エキストラでシリアル / HID 系ドライバ（`pyserial`, `hidapi` など）を追加。
-
-## 2. データセット準備
-
-本プロジェクトは Hugging Face Hub の [lerobot/aloha_sim_insertion_human_image](https://huggingface.co/datasets/lerobot/aloha_sim_insertion_human_image) を使用します。ローカルにキャッシュしたい場合は以下のスクリプトを実行してください。
-
-```bash
+# 2) （任意）データセットをローカルにキャッシュ
 python - <<'PY'
 from datasets import load_dataset
-ds = load_dataset("lerobot/aloha_sim_insertion_human_image")
+load_dataset("lerobot/aloha_sim_insertion_human_image", split="train")
 PY
-```
 
-##### もしダウンロードでCAS service error出たら
-
-```bash
-export HF_HUB_DISABLE_XET=1
-```
-
-## 3. FastVLM のファインチューニング
-
-`scripts/train.py` が固定化されたトレーニング CLI です。Apple の公開手順と近い実行例は次のとおりです。
-
-```bash
-python scripts/train.py \
-  --output-dir=outputs/train/fastvlm_aloha \
-  --model-id=$FASTVLM_BACKBONE_PATH/FastVLM-0.5B \
-  --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
-  --batch-size=2 \
-  --num-workers=2 \
-  --num-epochs=10 \
-  --mixed-precision=bf16
-```
-
-あるいは
-```bash
-export FASTVLM_BACKBONE_PATH="$(pwd)/models/apple-fastvlm"
-
+# 3) FastVLM を 10 エポック学習
+# python scripts/train.py \
+#   --output-dir=outputs/train/fastvlm_aloha \
+#   --model-id=apple/FastVLM-base \
+#   --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
+#   --batch-size=2 --num-workers=2 --num-epochs=10 --mixed-precision=bf16
+# または
 python scripts/train.py \
   --output-dir outputs/train/fastvlm_aloha \
   --model-id "$FASTVLM_BACKBONE_PATH/llava-fastvithd_0.5b_stage3" \
@@ -109,117 +36,142 @@ python scripts/train.py \
   --num-workers 0 \
   --num-epochs 10 \
   --max-steps 1000
-```
 
-出力内容:
-- `training_config.json`：実行時の `TrainingConfig` を JSON 化したもの。
-- `checkpoints/step-*/policy_config.json`：`FastVLMPolicyConfig` を JSON 保存。
-- `checkpoints/step-*/policy_state_dict.pt`：PyTorch の重み。
-
-継続学習を行う場合は、保存済みのチェックポイントを `--resume-from` に指定してください。
-
-## 4. データセット上での評価
-
-```bash
+# 4) データセット上の MSE 評価（split が存在しない場合は自動フォールバック）
 python scripts/eval_dataset.py \
   --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
   --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
   --split=validation
-```
 
-> **補足**: 公開データセットは `train` スプリットのみ提供されています。  
-> 既定の `--allow-missing-split` により自動的に `train` に切り替わりますが、必要に応じて `--split=train` を明示してください。
-
-評価指標は MSE（Mean Squared Error）を標準出力に表示します。
-
-## 5. シミュレーション実行
-
-MuJoCo (バージョン 3.1 以上) をインストールしてください。スクリプトは OS に応じて描画バックエンドを自動設定します（Linux: `egl`, macOS: `glfw`, Windows: `d3d11`）。必要であれば `MUJOCO_GL` を好みの値で上書きしてください。
-
-準備が整ったら、以下でシミュレーションを実行します。
-
-```bash
+# 5) MuJoCo シミュレーション＋動画保存
 python scripts/run_sim.py \
   --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
   --num-episodes=10 \
   --video-dir=outputs/eval/pi0_aloha
 ```
 
-各エピソードの成功可否・報酬などが標準出力に表示され、`video_dir` に MP4 ファイルが保存されます。
-
-## 6. 実機制御（将来の実機運用向け）
-
-`AlohaHardwareInterface` を継承したクラスを実装し、通信・センサ取得を独自ハードウェア向けに適合させます。
-
-```python
-# my_robot/interface.py
-from vla_fastvlm.real import AlohaHardwareInterface
-import numpy as np
-
-class CustomAlohaInterface(AlohaHardwareInterface):
-    ...
-```
-
-実行例:
-
-```bash
-python scripts/run_real.py \
-  --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
-  --interface-cls=my_robot.interface.CustomAlohaInterface \
-  --interface-kwargs-json='{"port":"/dev/ttyUSB0","camera_topic":"camera/top"}'
-```
-
-制御ループは設定された周波数で観測を取得し、FastVLM ポリシーで推定した関節コマンドを送出します。
-
-## 7. デバイス選択
-
-デフォルトは以下の優先順位でデバイスを選択します。
-1. CUDA GPU（利用可能な場合）
-2. Apple MPS Backend
-3. CPU
-
-環境変数 `FASTVLM_FORCE_DEVICE=cpu` などを指定すると強制的に固定できます。また各スクリプトの `--device-preference` で上書きも可能です。
-
-## 8. FastVLM モデルの入手
-
-Apple が配布する FastVLM の重みは本リポジトリには含まれていません。公式リポジトリの [Model Zoo](https://github.com/apple/ml-fastvlm?tab=readme-ov-file#model-zoo) からダウンロードしてください。
-
-1. 上記リンク先で必要なバリアント（例：`FastVLM-Base`）を選択。
-2. Apple の利用規約に同意し、`.safetensors`（または `.pt`）や tokenizer/config など付随ファイルを取得。
-3. 任意のパス（例：`models/apple-fastvlm`）に配置し、モデル読み込み時にそのパスを指定します。
-
-    ```bash
-    export FASTVLM_BACKBONE_PATH=/absolute/path/to/models/apple-fastvlm
-    ```
-
-    ```python
-    from vla_fastvlm.model.fastvlm_adapter import FastVLMBackboneConfig
-
-    cfg = FastVLMBackboneConfig(model_id=FASTVLM_BACKBONE_PATH)
-    ```
-
-   もしくは重みを自身のプライベート Hugging Face リポジトリへアップロードし、`model_id` にそのリポジトリ名を指定しても構いません。
-
-取得した重みには Apple の `LICENSE`, `LICENSE_MODEL`, `ACKNOWLEDGEMENTS` を必ず同梱し、ライセンス条件を遵守してください。
-
-公式スクリプト互換の `scripts/download_fastvlm.sh` を用意しています。以下のように実行するとチェックポイントをまとめて取得して解凍できます。
-
-```bash
-bash scripts/download_fastvlm.sh ./models/apple-fastvlm
-```
-
-
-## 9. 設定ファイル
-
-`configs/train_aloha.yaml` は README の手順を再現するための参考設定です。CLI に直接 YAML を読み込ませる機能はありませんが、Python スニペット等で `--key=value` 形式に展開すると便利です。
-
-## 10. ライセンス
-
-- 本リポジトリのオリジナルコードは MIT License（`LICENSE`）で公開しています。
-- FastVLM に関するコード/アセットは Apple Inc. が著作権を保有し、`third_party/ml-fastvlm/LICENSE` に記載された条件で再配布しています。
-- モデル重み (`LICENSE_MODEL`) や追加の著作権表記 (`ACKNOWLEDGEMENTS`) については Apple のリポジトリ（[apple/ml-fastvlm](https://github.com/apple/ml-fastvlm)）をご参照のうえ、ご自身で取得してください。本リポジトリには重みファイルを同梱していません。
-- Apple の商標・ロゴはプロモーション用途で使用できません。本プロジェクトが Apple 公式とは無関係であることを README 等に明記しています。
+全スクリプトは `tyro` ベースの CLI を提供し、フラグはハイフン区切り（例: `--checkpoint-dir`）です。
 
 ---
 
-質問や改善提案がありましたら、お気軽に Issue や Pull Request をお寄せください。*** End Patch
+## 必要要件
+
+- Python 3.10 以上 + PyTorch 2.1 以上（CUDA / MPS / CPU に対応）。
+- MuJoCo 3.1 以上（OS に応じて `MUJOCO_GL` を自動選択）。
+- `gym-aloha` 0.1.3 以上（`[sim]` エキストラでインストール）。
+- Apple MPS バックエンド（macOS 13+）または NVIDIA GPU を推奨。
+- 実機制御では `AlohaHardwareInterface` を継承したクラスを自作し、`[real]` エキストラでシリアル・HID ドライバを追加。
+
+---
+
+## ディレクトリ構成
+
+```
+.
+├── configs/                # 参考設定
+├── scripts/                # 学習 / 評価 / シミュレーション / 実機 CLI
+├── src/vla_fastvlm/        # Python パッケージ本体
+│   ├── data/               # データセットラッパー
+│   ├── model/              # FastVLM アダプタ + ポリシーヘッド
+│   ├── training/           # Accelerate ベースのトレーナー
+│   ├── sim/                # MuJoCo ロールアウト補助
+│   ├── real/               # 実機制御インターフェース
+│   └── utils/              # ログ / チェックポイント / デバイス補助
+└── outputs/                # 学習成果物（チェックポイント / 動画 / ログ）
+```
+
+---
+
+## FastVLM モデルの取得
+
+- Apple の Model Zoo から `.safetensors` / `.pt` と付属ファイルをダウンロードしてください。
+- 例: `bash scripts/download_fastvlm.sh ./models/apple-fastvlm` で一括取得。`FASTVLM_BACKBONE_PATH` 環境変数を設定すると CLI から参照しやすくなります。
+- Transformers が必要とする Python モジュールが含まれない場合は、Hugging Face CLI で公式スナップショット（例: `apple/FastVLM-0.5B`）を同じディレクトリに展開してください。
+- 重みの再配布時は Apple の `LICENSE` / `LICENSE_MODEL` / `ACKNOWLEDGEMENTS` を必ず同梱してください。
+
+---
+
+## データセットのポイント
+
+- 公開データセットは `train` スプリットのみ。`scripts/eval_dataset.py` は既定で `--allow-missing-split` が有効になっており、`--split=validation` を指定しても `train` に切り替わって警告を表示します。明示的に失敗させたい場合は `--allow-missing-split=false` を指定してください。
+- ローカルダウンロードを避けたい場合は `--streaming` を有効にします。
+- 手早く検証するには `--limit-samples 256` や `--batch-size 1` などを組み合わせます。
+- Hugging Face のキャッシュ場所は `HF_HOME` で変更できます。`TRANSFORMERS_CACHE` 非推奨の警告は `HF_HOME` を設定することで解消できます。
+
+---
+
+## 学習（`scripts/train.py`）
+
+- `TrainArgs` dataclass にすべてのハイパーパラメータが定義されています。既定値は 10 エポック、バッチサイズ 4、ストリーミング無効です。
+- `max_steps` が `null` の場合は `num_epochs` が終了条件になります。学習時間を短縮したい場合は `--num-epochs` を減らすか `--max-steps` を設定してください。
+- 出力内容:
+  - `outputs/train/<run_name>/training_config.json`: 実行時の `TrainingConfig`。
+  - `outputs/train/<run_name>/checkpoints/step-*/`: `policy_state_dict.pt` と `policy_config.json`。
+  - TensorBoard ログ（`tensorboard --logdir outputs/train/fastvlm_aloha` で閲覧）。
+- 継続学習は `--checkpoint-dir` と `--resume-from` を併用して再開できます。
+
+---
+
+## 評価（`scripts/eval_dataset.py`）
+
+- 学習済みポリシーを用いてデータセットの MSE を計測します。
+- バッチサイズ・ワーカー数・ストリーミング有無は学習スクリプトと同じフラグで制御します。
+- Apple MPS では `pin_memory` に関する警告が表示されますが、現状の PyTorch 仕様上は無視して問題ありません。
+- 実行例（`eval_log.txt` より）:
+  ```
+  [eval_dataset] Split 'validation' not found; using 'train' instead.
+  MSE on split 'train': 0.004554
+  ```
+
+---
+
+## シミュレーション（`scripts/run_sim.py`）
+
+- `gym_aloha/AlohaInsertion-v0` を起動し、ポリシー推論と動画保存を行います。
+- OS に応じてレンダリングバックエンドを自動選択します（Linux: `egl`、macOS: `glfw`、Windows: `d3d11`）。必要なら `MUJOCO_GL` を上書きしてください。
+- FastVLM アダプタが入力画像を自動リサイズ（最短辺 512px 以上）し、必要に応じて torchvision にフォールバックします。フォールバック時は一度だけ警告が表示されます。
+- 主なフラグ: `--num-episodes`, `--max-episode-steps`, `--task-instruction`, `--video-dir`, `--record-video=false`.
+
+---
+
+## 実機制御（`scripts/run_real.py`）
+
+- `AlohaHardwareInterface` を継承したクラスを `--interface-cls` で指定し、必要なら `--interface-kwargs-json` でパラメータを渡します。
+- ランナーは観測を取得してポリシーに入力し、推定アクションを設定周波数で送出します。
+- `--device-preference` や `FASTVLM_FORCE_DEVICE` によるデバイス指定はシミュレーションと共通です。
+
+---
+
+## CLI 一覧
+
+| スクリプト | 目的 | 代表的なフラグ |
+| ---------- | ---- | -------------- |
+| `scripts/train.py` | FastVLM の学習 | `--output-dir`, `--model-id`, `--dataset-repo-id`, `--num-epochs`, `--max-steps`, `--mixed-precision` |
+| `scripts/eval_dataset.py` | データセット MSE 評価 | `--checkpoint-dir`, `--split`, `--allow-missing-split`, `--limit-samples`, `--streaming` |
+| `scripts/run_sim.py` | MuJoCo ロールアウト + 動画保存 | `--checkpoint-dir`, `--num-episodes`, `--max-episode-steps`, `--video-dir`, `--device-preference` |
+| `scripts/run_real.py` | 実機制御ループ | `--checkpoint-dir`, `--interface-cls`, `--interface-kwargs-json`, `--task-instruction` |
+
+各スクリプトは `--help` で全パラメータを確認できます。
+
+---
+
+## トラブルシューティング
+
+- **データセットのスプリットが無い**: 既定の `--allow-missing-split` を利用するか、`--split=train` を指定してください。
+- **`TRANSFORMERS_CACHE` 非推奨警告**: `HF_HOME` を設定すると抑制できます。
+- **画像プロセッサが遅い警告**: Transformers 4.52 以降で `use_fast=True` が既定になります。早めに `TRANSFORMERS_USE_FAST=1` を有効化するか、フォールバック警告は無視してください。
+- **MPS 上の `pin_memory` 警告**: 仕様通り無視可能です。CPU / CUDA ではピン止めメモリが有効になります。
+- **MuJoCo の EGL 読み込み失敗**: macOS では `glfw` が自動使用されるため問題は解消済みです。手動で変更する場合は `MUJOCO_GL=glfw` を指定してください。
+- **`gym_aloha` import エラー**: `pip install -e ".[sim]"` が成功しているか、MuJoCo 3.1 以上がインストールされているか確認してください。
+
+---
+
+## ライセンス
+
+- リポジトリ本体: MIT License（`LICENSE`）。
+- Apple FastVLM 関連のコード / アセット: Apple Inc. のライセンスに従います（`third_party/ml-fastvlm/LICENSE`）。
+- モデル重みは同梱していません。Model Zoo から取得し、ライセンス条件を遵守してください。
+
+---
+
+Issue や Pull Request、シミュレーションとまだ色々とできてるかどうかが怪しいので、結果の共有などIssuesを歓迎します。Aloha 以外のタスクへ適用した場合はぜひ情報提供をお願いします。
