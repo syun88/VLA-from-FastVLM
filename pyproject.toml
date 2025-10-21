@@ -37,6 +37,7 @@ dependencies = [
     "transformers",
     "tqdm",
     "tyro",
+    "timm",
 ]
 
 [project.optional-dependencies]
