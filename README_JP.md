@@ -97,6 +97,19 @@ python scripts/train.py \
   --mixed_precision=bf16
 ```
 
+あるいは
+```bash
+export FASTVLM_BACKBONE_PATH="$(pwd)/models/apple-fastvlm"
+
+python scripts/train.py \
+  --output_dir outputs/train/fastvlm_aloha \
+  --model_id "$FASTVLM_BACKBONE_PATH/llava-fastvithd_0.5b_stage3" \
+  --dataset_repo_id lerobot/aloha_sim_insertion_human_image \
+  --batch_size 2 \
+  --num_workers 0 \
+  --num_epochs 10
+```
+
 出力内容:
 - `training_config.json`：実行時の `TrainingConfig` を JSON 化したもの。
 - `checkpoints/step-*/policy_config.json`：`FastVLMPolicyConfig` を JSON 保存。
@@ -117,7 +130,7 @@ python scripts/eval_dataset.py \
 
 ## 5. シミュレーション実行
 
-MuJoCo 3.1 以上をインストールし、`MUJOCO_GL=egl` を使用できる環境を整えてください（スクリプト内で自動設定）。その後、以下でシミュレーションを実行します。
+MuJoCoをインストールし、`MUJOCO_GL=egl` を使用できる環境を整えてください（スクリプト内で自動設定）。その後、以下でシミュレーションを実行します。
 
 ```bash
 python scripts/run_sim.py \

@@ -1,232 +1,276 @@
+# src/vla_fastvlm/model/fastvlm_adapter.py
 from __future__ import annotations
 
-import functools
 from dataclasses import dataclass
-from pathlib import Path
-import json
+from typing import List, Optional, Dict, Any
 
 import torch
 from torch import nn
-from torchvision.transforms.functional import to_pil_image
-from transformers import AutoConfig, AutoModelForCausalLM, AutoProcessor, CLIPVisionConfig, PretrainedConfig
+
+from transformers import (
+    AutoModelForCausalLM,
+    AutoTokenizer,
+    AutoProcessor,
+    AutoImageProcessor,
+)
+
+# 画像前処理の最低限を自前で用意（画像プロセッサが無い時のフォールバック）
+try:
+    import torchvision.transforms as T
+    _HAS_TV = True
+except Exception:
+    _HAS_TV = False
 
 
 @dataclass
 class FastVLMBackboneConfig:
     model_id: str = "apple/FastVLM-base"
-    revision: str | None = None
-    pooling: str = "mean"  # options: mean | cls
     freeze_backbone: bool = True
-    use_attention_mask: bool = True
+    # 特徴プーリング: "last_token" | "mean_pool"
+    image_feature_pool: str = "last_token"
+    # 画像プロセッサが無い時のリサイズ解像度（多くのVLMが 336 or 384）
+    fallback_image_size: int = 336
 
 
 class FastVLMBackbone(nn.Module):
     """
-    Wrap Apple's FastVLM model to produce a fixed-size embedding.
+    FastVLM / LLaVA 系 VLM を特徴抽出器として使うバックボーン。
+
+    特徴:
+    - AutoProcessor が tokenizer-only の場合に備え、tokenizer と image_processor を分離ロード
+    - image_processor が見つからない場合は torchvision でリサイズ&標準化（フォールバック）
+    - CausalLMOutput / BaseModelOutput の両方に対応（hidden_states or last_hidden_state）
+    - モデルが受け付ける画像キー名を複数試行（pixel_values / images など）
     """
 
     def __init__(self, config: FastVLMBackboneConfig | None = None) -> None:
         super().__init__()
         self.config = config or FastVLMBackboneConfig()
 
-        model_path = Path(self.config.model_id)
-        local_files_only = model_path.exists()
-        load_kwargs = {
-            "revision": self.config.revision,
-            "trust_remote_code": True,
-        }
-        if local_files_only:
-            load_kwargs["local_files_only"] = True
-
-        self.processor = AutoProcessor.from_pretrained(
-            self.config.model_id,
-            **load_kwargs,
-        )
-        hf_config = AutoConfig.from_pretrained(
-            self.config.model_id,
-            **load_kwargs,
-        )
-        vision_config = getattr(hf_config, "vision_config", None)
-        hydrated_vision_config = self._hydrate_vision_config(
-            vision_config,
-            model_path=model_path,
-            local_files_only=local_files_only,
-        )
-        if hydrated_vision_config is not None:
-            hf_config.vision_config = hydrated_vision_config
-
-        if not isinstance(getattr(hf_config, "vision_config", None), PretrainedConfig):
-            vision_dict = self._load_local_json(model_path, "vision_config.json") if local_files_only else None
-            fallback = self._build_vision_config(vision_dict)
-            if fallback is None:
-                fallback = self._build_vision_config(self._default_vision_dict())
-            if fallback is None:
-                fallback = CLIPVisionConfig(**self._default_vision_dict())
-            hf_config.vision_config = fallback
-
-        self._ensure_llava_defaults(hf_config)
-
+        # ---- モデル本体
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.model_id,
-            config=hf_config,
-            **load_kwargs,
+            trust_remote_code=True,
+            dtype=torch.float32,  # macOS/MPS の安定性重視
         )
-        hidden_size = getattr(hf_config, "hidden_size", None)
+        if hasattr(self.model, "config"):
+            self.model.config.output_hidden_states = True
+
+        # hidden 次元の推定
+        hidden_size = getattr(self.model.config, "hidden_size", None)
         if hidden_size is None:
-            hidden_size = getattr(self.model, "config", None)
-            hidden_size = getattr(hidden_size, "hidden_size", 1024)
-        self.output_dim = hidden_size
+            hs_list = getattr(self.model.config, "hidden_sizes", None)
+            if isinstance(hs_list, (list, tuple)) and len(hs_list) > 0:
+                hidden_size = int(hs_list[-1])
+        if hidden_size is None:
+            raise ValueError("Could not infer hidden size from model config.")
+        self.output_dim = int(hidden_size)
 
-        if self.config.freeze_backbone:
-            for param in self.model.parameters():
-                param.requires_grad = False
+        # ---- 前処理系（できるだけ賢くロード）
+        self.processor = None
+        self.tokenizer = None
+        self.image_processor = None
 
-    def _hydrate_vision_config(
-        self,
-        vision_config: PretrainedConfig | dict | str | None,
-        *,
-        model_path: Path,
-        local_files_only: bool,
-    ) -> PretrainedConfig | None:
-        if isinstance(vision_config, PretrainedConfig):
-            return vision_config
+        # 1) AutoProcessor を試す（成功しても tokenizer-only の可能性がある）
+        try:
+            proc = AutoProcessor.from_pretrained(self.config.model_id, trust_remote_code=True)
+            self.processor = proc
+        except Exception:
+            self.processor = None
 
-        vision_dict: dict | None = None
-        if isinstance(vision_config, str):
-            vision_dict = self._load_local_json(model_path, vision_config) if local_files_only else None
-            if vision_dict is None:
-                vision_dict = self._load_remote_json(
-                    self.config.model_id,
-                    vision_config,
-                    revision=self.config.revision,
+        # 2) tokenizer を確実に用意
+        try:
+            self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_id, trust_remote_code=True)
+        except Exception as e:
+            # AutoProcessor に tokenizer が入っているかも
+            if self.processor is not None and hasattr(self.processor, "tokenizer"):
+                self.tokenizer = self.processor.tokenizer
+            else:
+                raise e
+
+        # 3) image_processor をできる限り探す
+        #   - AutoProcessor に image_processor が含まれていれば利用
+        #   - 無ければ AutoImageProcessor を試す
+        if self.processor is not None and hasattr(self.processor, "image_processor"):
+            self.image_processor = self.processor.image_processor
+        else:
+            try:
+                self.image_processor = AutoImageProcessor.from_pretrained(
+                    self.config.model_id, trust_remote_code=True
                 )
-        elif isinstance(vision_config, dict):
-            vision_dict = vision_config
+            except Exception:
+                self.image_processor = None  # 後で torchvision フォールバック
 
-        return self._build_vision_config(vision_dict)
+        # ---- 凍結オプション
+        if self.config.freeze_backbone:
+            for p in self.model.parameters():
+                p.requires_grad = False
 
-    def _ensure_llava_defaults(self, config: PretrainedConfig) -> None:
-        if not hasattr(config, "vision_feature_layer"):
-            layer = getattr(config, "mm_vision_select_layer", -2)
-            config.vision_feature_layer = layer
+        # ---- torchvision フォールバック（必要時のみ使用）
+        if self.image_processor is None and not _HAS_TV:
+            # 画像プロセッサも torchvision も無いと画像前処理ができない
+            raise RuntimeError(
+                "No image processor found and torchvision is unavailable. "
+                "Install torchvision or provide a valid image processor in the model repo."
+            )
 
-        if not hasattr(config, "vision_feature_select_strategy"):
-            strategy = getattr(config, "mm_vision_select_feature", None)
-            if strategy in (None, "patch"):
-                strategy = "default"
-            elif strategy == "token":
-                strategy = "full"
-            config.vision_feature_select_strategy = strategy
+        # torchvision フォールバック用の transform
+        if self.image_processor is None and _HAS_TV:
+            size = self.config.fallback_image_size
+            # 標準的な ImageNet 正規化（多くの VLM で互換）
+            self._tv_transform = T.Compose([
+                T.Resize((size, size)),
+                T.ConvertImageDtype(torch.float32),
+                T.Normalize(mean=[0.485, 0.456, 0.406],
+                            std=[0.229, 0.224, 0.225]),
+            ])
+        else:
+            self._tv_transform = None
 
-        if not hasattr(config, "image_seq_length"):
-            image_size = getattr(getattr(config, "vision_config", None), "image_size", None)
-            patch_size = getattr(getattr(config, "vision_config", None), "patch_size", None)
-            seq_length = None
-            if isinstance(image_size, int) and isinstance(patch_size, int) and patch_size > 0:
-                grid = image_size // patch_size
-                if grid > 0:
-                    seq_length = grid * grid
-            if seq_length is None:
-                seq_length = getattr(config, "mm_hidden_size", 576)
-            config.image_seq_length = seq_length
+    # -------------------- ヘルパ --------------------
 
-    def _prepare_inputs(
-        self,
-        images: torch.Tensor,
-        tasks: list[str],
-        device: torch.device,
-    ) -> dict[str, torch.Tensor]:
+    @staticmethod
+    def _pool_hidden(hidden: torch.Tensor, attention_mask: Optional[torch.Tensor], mode: str) -> torch.Tensor:
         """
-        FastVLM's processor expects PIL images; convert tensors safely.
+        hidden: (B, T, H)
+        attention_mask: (B, T) or None
+        return: (B, H)
         """
-        pil_images = [_tensor_to_pil(img) for img in images]
-        processor_inputs = self.processor(
-            images=pil_images,
-            text=tasks,
-            return_tensors="pt",
+        if mode == "mean_pool":
+            if attention_mask is None:
+                return hidden.mean(dim=1)
+            mask = attention_mask.float().unsqueeze(-1)  # (B,T,1)
+            summed = (hidden * mask).sum(dim=1)          # (B,H)
+            denom = mask.sum(dim=1).clamp_min(1e-6)      # (B,1)
+            return summed / denom
+
+        # last_token
+        if attention_mask is not None:
+            lengths = attention_mask.long().sum(dim=1)       # (B,)
+            idx = (lengths - 1).clamp_min(0)                 # (B,)
+            b, _, h = hidden.size()
+            gather_idx = idx.view(b, 1, 1).expand(b, 1, h)   # (B,1,H)
+            return hidden.gather(dim=1, index=gather_idx).squeeze(1)
+        return hidden[:, -1, :]
+
+    def _prep_text(self, tasks: List[str], device: torch.device) -> Dict[str, torch.Tensor]:
+        tok = self.tokenizer(
+            tasks,
             padding=True,
+            truncation=True,
+            return_tensors="pt",
         )
-        return {key: value.to(device) for key, value in processor_inputs.items()}
+        return {k: v.to(device) for k, v in tok.items()}
 
-    def forward(self, images: torch.Tensor, tasks: list[str], device: torch.device | None = None) -> torch.Tensor:
+    def _prep_images(self, images: torch.Tensor, device: torch.device) -> Dict[str, torch.Tensor]:
+        """
+        画像をモデルが受け取りそうな dict にして返す。
+        可能なキー:
+          - "pixel_values"
+          - "images"（一部の trust_remote_code 実装）
+        """
+        if images.ndim != 4:
+            raise ValueError(f"Expected images as (B,C,H,W), got {images.shape}")
+
+        if self.image_processor is not None:
+            # AutoImageProcessor / processor.image_processor 経由
+            # 多くの実装が PIL 変換不要で Tensor を受け取れる
+            # （受け取れない場合は .tolist() 的な前処理が必要だが稀）
+            out = self.image_processor(
+                list(images),  # バッチ Tensor をリストで渡すと安定
+                return_tensors="pt",
+            )
+            return {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in out.items()}
+
+        # torchvision フォールバック
+        assert self._tv_transform is not None
+        with torch.no_grad():
+            x = images
+            if x.dtype != torch.float32:
+                x = x.float()
+            # [0,255]→[0,1] の場合は適宜調整（ここではスケール未実施、ConvertImageDtypeが吸収）
+            x = torch.stack([self._tv_transform(img.cpu()) for img in x], dim=0)  # (B,3,H,W)
+        return {"pixel_values": x.to(device)}
+
+    # -------------------- Forward --------------------
+
+    def forward(
+        self,
+        images: torch.Tensor,   # (B,C,H,W)
+        tasks: List[str],
+        device: torch.device | None = None,
+    ) -> torch.Tensor:         # (B, H=self.output_dim)
         if device is None:
             device = images.device
-        inputs = self._prepare_inputs(images, tasks, device=device)
-        outputs = self.model(**inputs)
-        last_hidden_state = outputs.last_hidden_state  # (batch, seq_len, hidden)
-        if self.config.pooling == "cls":
-            pooled = last_hidden_state[:, 0, :]
-        else:
-            pooled = last_hidden_state.mean(dim=1)
-        return pooled
 
-    @staticmethod
-    def _build_vision_config(config_dict: dict | None) -> PretrainedConfig | None:
-        if config_dict is None:
-            return None
+        self.model.to(device)
 
-        model_type = config_dict.get("model_type") if isinstance(config_dict, dict) else None
-        if model_type is not None:
-            kwargs = dict(config_dict)
-            kwargs.pop("model_type", None)
+        text_inputs = self._prep_text(tasks, device)
+        image_inputs = self._prep_images(images, device)
+
+        # 入力の組み立て
+        common: Dict[str, Any] = dict(
+            output_hidden_states=True,
+            return_dict=True,
+        )
+        inputs = {**text_inputs, **image_inputs}
+
+        # 受け付ける画像キー名がモデルごとに違う可能性に備えてフォールバック実行
+        tried: List[str] = []
+        def _try_call(**kw):
+            out = self.model(**kw)
+            return out
+
+        # 優先順にキーバリアントを試す
+        variants: List[Dict[str, Any]] = []
+
+        # そのまま（pixel_values があるならまずは素直に）
+        variants.append(inputs)
+
+        # images キーに差し替え（trust_remote_code 系で稀に必要）
+        if "pixel_values" in inputs and "images" not in inputs:
+            v = dict(inputs)
+            v["images"] = v.pop("pixel_values")
+            variants.append(v)
+
+        # pixel_values_vit キー（独自実装で見かけることがある）
+        if "pixel_values" in inputs and "pixel_values_vit" not in inputs:
+            v = dict(inputs)
+            v["pixel_values_vit"] = v.pop("pixel_values")
+            variants.append(v)
+
+        # 実行
+        last_out = None
+        err: Optional[Exception] = None
+        for cand in variants:
             try:
-                return AutoConfig.for_model(model_type, **kwargs)
-            except Exception:
-                pass
+                out = _try_call(**cand, **common)
+                last_out = out
+                err = None
+                break
+            except TypeError as e:
+                err = e
+                tried.append(", ".join(sorted([k for k in cand.keys() if k not in text_inputs])))
+                continue
 
-        try:
-            return CLIPVisionConfig(**config_dict)  # type: ignore[arg-type]
-        except Exception:
-            pass
-
-        try:
-            return PretrainedConfig.from_dict(config_dict)  # type: ignore[arg-type]
-        except Exception:
-            return None
-
-    @staticmethod
-    def _default_vision_dict() -> dict[str, int | str]:
-        return {
-            "model_type": "clip_vision_model",
-            "hidden_size": 1024,
-            "intermediate_size": 4096,
-            "num_attention_heads": 16,
-            "num_hidden_layers": 24,
-            "image_size": 1024,
-            "patch_size": 16,
-        }
-
-    @staticmethod
-    def _load_local_json(base_path: Path, filename: str) -> dict | None:
-        candidate = base_path / filename
-        if not candidate.exists():
-            return None
-        try:
-            return json.loads(candidate.read_text())
-        except Exception:
-            return None
-
-    @staticmethod
-    def _load_remote_json(model_id: str, filename: str, revision: str | None = None) -> dict | None:
-        try:
-            from huggingface_hub import hf_hub_download
-        except Exception:
-            return None
-        try:
-            downloaded_path = hf_hub_download(
-                model_id,
-                filename,
-                revision=revision,
-                repo_type="model",
+        if last_out is None:
+            raise TypeError(
+                "VLM forward failed for all image-key variants. "
+                f"Tried image key sets: {tried}. Last error: {repr(err)}"
             )
-            return json.loads(Path(downloaded_path).read_text())
-        except Exception:
-            return None
 
+        outputs = last_out
 
-@functools.lru_cache(maxsize=128)
-def _tensor_to_pil(tensor: torch.Tensor):
-    """Convert torch tensor (C,H,W) in [0,1] or [0,255] to PIL image."""
-    if tensor.device.type != "cpu":
-        tensor = tensor.detach().cpu()
-    return to_pil_image(tensor)
+        # 出力から (B,T,H) を取り出す
+        if hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
+            hidden_seq = outputs.last_hidden_state
+        elif getattr(outputs, "hidden_states", None) is not None:
+            hidden_seq = outputs.hidden_states[-1]
+        else:
+            raise RuntimeError(
+                "Backbone did not return hidden states. Ensure output_hidden_states=True."
+            )
+
+        attention_mask = text_inputs.get("attention_mask", None)
+        pooled = self._pool_hidden(hidden_seq, attention_mask=attention_mask, mode=self.config.image_feature_pool)
+        return pooled

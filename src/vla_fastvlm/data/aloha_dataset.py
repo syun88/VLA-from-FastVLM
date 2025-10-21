@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable, Dict, Iterable, Iterator, Optional
+from typing import Any, Callable, Dict, Iterable, Iterator, Optional
 
 import torch
 from datasets import IterableDataset as HFDIterableDataset
@@ -78,7 +78,7 @@ class AlohaDataset(Dataset[AlohaSample]):
         image = record[self._image_key]
         state = record[self._state_key]
         action = record[self._action_key]
-        task = record[self._task_key]
+        task = _resolve_task(record, self._task_key)
 
         image = self._image_transform(image)
         if self._state_transform is not None:
@@ -192,26 +192,50 @@ def create_aloha_dataloader(
     Construct a PyTorch dataloader that yields dictionaries ready for FastVLM training.
     """
 
-    def collate_fn(batch: Iterable[AlohaSample]) -> Dict[str, torch.Tensor | list]:
-        batch_list = list(batch)
-        images = torch.stack([sample.image for sample in batch_list])
-        states = torch.stack([sample.state for sample in batch_list])
-        actions = torch.stack([sample.action for sample in batch_list])
-        tasks = [sample.task for sample in batch_list]
-        metadata = [sample.metadata for sample in batch_list]
-        return {
-            "images": images,
-            "states": states,
-            "actions": actions,
-            "tasks": tasks,
-            "metadata": metadata,
-        }
-
     return DataLoader(
         dataset,
         batch_size=batch_size,
         shuffle=shuffle if isinstance(dataset, Dataset) else False,
         num_workers=num_workers,
         pin_memory=True,
-        collate_fn=collate_fn,
+        collate_fn=aloha_collate_fn,
     )
+
+
+def aloha_collate_fn(batch: Iterable[AlohaSample]) -> Dict[str, torch.Tensor | list]:
+    """
+    Collate function that converts a batch of `AlohaSample` objects into tensors/lists.
+    Defined at module scope so it can be pickled by PyTorch worker processes.
+    """
+    batch_list = list(batch)
+    images = torch.stack([sample.image for sample in batch_list])
+    states = torch.stack([sample.state for sample in batch_list])
+    actions = torch.stack([sample.action for sample in batch_list])
+    tasks = [sample.task for sample in batch_list]
+    metadata = [sample.metadata for sample in batch_list]
+    return {
+        "images": images,
+        "states": states,
+        "actions": actions,
+        "tasks": tasks,
+        "metadata": metadata,
+    }
+
+
+def _resolve_task(record: Dict[str, Any], task_key: Optional[str]) -> str:
+    """
+    Try to obtain a task label from the record, falling back to common alternate keys.
+    Returns 'unknown' when no task information is available.
+    """
+    candidate_keys = []
+    if task_key:
+        candidate_keys.append(task_key)
+    candidate_keys.extend(["task", "task_id", "task_name"])
+
+    for key in candidate_keys:
+        if key and key in record and record[key] is not None:
+            value = record[key]
+            if isinstance(value, str):
+                return value
+            return str(value)
+    return "unknown"
