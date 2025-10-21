@@ -107,7 +107,8 @@ python scripts/train.py \
   --dataset-repo-id lerobot/aloha_sim_insertion_human_image \
   --batch-size 2 \
   --num-workers 0 \
-  --num-epochs 10
+  --num-epochs 10 \
+  --max-steps 1000
 ```
 
 出力内容:
