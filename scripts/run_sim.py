@@ -43,4 +43,4 @@ def main(args: SimArgs) -> None:
 
 
 if __name__ == "__main__":
-    tyro.cli(main)
+    main(tyro.cli(SimArgs))

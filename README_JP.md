@@ -88,13 +88,13 @@ export HF_HUB_DISABLE_XET=1
 
 ```bash
 python scripts/train.py \
-  --output_dir=outputs/train/fastvlm_aloha \
-  --model_id=$FASTVLM_BACKBONE_PATH/FastVLM-0.5B \
-  --dataset_repo_id=lerobot/aloha_sim_insertion_human_image \
-  --batch_size=2 \
-  --num_workers=2 \
-  --num_epochs=10 \
-  --mixed_precision=bf16
+  --output-dir=outputs/train/fastvlm_aloha \
+  --model-id=$FASTVLM_BACKBONE_PATH/FastVLM-0.5B \
+  --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
+  --batch-size=2 \
+  --num-workers=2 \
+  --num-epochs=10 \
+  --mixed-precision=bf16
 ```
 
 あるいは
@@ -102,12 +102,12 @@ python scripts/train.py \
 export FASTVLM_BACKBONE_PATH="$(pwd)/models/apple-fastvlm"
 
 python scripts/train.py \
-  --output_dir outputs/train/fastvlm_aloha \
-  --model_id "$FASTVLM_BACKBONE_PATH/llava-fastvithd_0.5b_stage3" \
-  --dataset_repo_id lerobot/aloha_sim_insertion_human_image \
-  --batch_size 2 \
-  --num_workers 0 \
-  --num_epochs 10
+  --output-dir outputs/train/fastvlm_aloha \
+  --model-id "$FASTVLM_BACKBONE_PATH/llava-fastvithd_0.5b_stage3" \
+  --dataset-repo-id lerobot/aloha_sim_insertion_human_image \
+  --batch-size 2 \
+  --num-workers 0 \
+  --num-epochs 10
 ```
 
 出力内容:
@@ -115,28 +115,33 @@ python scripts/train.py \
 - `checkpoints/step-*/policy_config.json`：`FastVLMPolicyConfig` を JSON 保存。
 - `checkpoints/step-*/policy_state_dict.pt`：PyTorch の重み。
 
-継続学習を行う場合は、保存済みのチェックポイントを `--resume_from` に指定してください。
+継続学習を行う場合は、保存済みのチェックポイントを `--resume-from` に指定してください。
 
 ## 4. データセット上での評価
 
 ```bash
 python scripts/eval_dataset.py \
-  --checkpoint_dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
-  --dataset_repo_id=lerobot/aloha_sim_insertion_human_image \
+  --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
+  --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
   --split=validation
 ```
+
+> **補足**: 公開データセットは `train` スプリットのみ提供されています。  
+> 既定の `--allow-missing-split` により自動的に `train` に切り替わりますが、必要に応じて `--split=train` を明示してください。
 
 評価指標は MSE（Mean Squared Error）を標準出力に表示します。
 
 ## 5. シミュレーション実行
 
-MuJoCoをインストールし、`MUJOCO_GL=egl` を使用できる環境を整えてください（スクリプト内で自動設定）。その後、以下でシミュレーションを実行します。
+MuJoCo (バージョン 3.1 以上) をインストールしてください。スクリプトは OS に応じて描画バックエンドを自動設定します（Linux: `egl`, macOS: `glfw`, Windows: `d3d11`）。必要であれば `MUJOCO_GL` を好みの値で上書きしてください。
+
+準備が整ったら、以下でシミュレーションを実行します。
 
 ```bash
 python scripts/run_sim.py \
-  --checkpoint_dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
-  --num_episodes=10 \
-  --video_dir=outputs/eval/pi0_aloha
+  --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
+  --num-episodes=10 \
+  --video-dir=outputs/eval/pi0_aloha
 ```
 
 各エピソードの成功可否・報酬などが標準出力に表示され、`video_dir` に MP4 ファイルが保存されます。
@@ -158,9 +163,9 @@ class CustomAlohaInterface(AlohaHardwareInterface):
 
 ```bash
 python scripts/run_real.py \
-  --checkpoint_dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
-  --interface_cls=my_robot.interface.CustomAlohaInterface \
-  --interface_kwargs_json='{"port":"/dev/ttyUSB0","camera_topic":"camera/top"}'
+  --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
+  --interface-cls=my_robot.interface.CustomAlohaInterface \
+  --interface-kwargs-json='{"port":"/dev/ttyUSB0","camera_topic":"camera/top"}'
 ```
 
 制御ループは設定された周波数で観測を取得し、FastVLM ポリシーで推定した関節コマンドを送出します。
@@ -172,7 +177,7 @@ python scripts/run_real.py \
 2. Apple MPS Backend
 3. CPU
 
-環境変数 `FASTVLM_FORCE_DEVICE=cpu` などを指定すると強制的に固定できます。また各スクリプトの `--device_preference` で上書きも可能です。
+環境変数 `FASTVLM_FORCE_DEVICE=cpu` などを指定すると強制的に固定できます。また各スクリプトの `--device-preference` で上書きも可能です。
 
 ## 8. FastVLM モデルの入手
 

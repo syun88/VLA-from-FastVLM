@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import platform
 from dataclasses import dataclass
 from pathlib import Path
 from typing import List
@@ -40,7 +41,14 @@ def run_aloha_simulation(policy, config: AlohaSimulationConfig) -> List[dict]:
     policy.to(device)
     policy.eval()
 
-    os.environ.setdefault("MUJOCO_GL", "egl")
+    if "MUJOCO_GL" not in os.environ:
+        system = platform.system().lower()
+        if system == "darwin":
+            os.environ["MUJOCO_GL"] = "glfw"
+        elif system == "windows":
+            os.environ["MUJOCO_GL"] = "d3d11"
+        else:
+            os.environ["MUJOCO_GL"] = "egl"
     results: List[dict] = []
 
     video_root = Path(config.video_dir)

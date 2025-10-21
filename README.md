@@ -60,13 +60,13 @@ No dummy data is created—the scripts stream real episodes directly from the Hu
 
 ```bash
 python scripts/train.py \
-  --output_dir=outputs/train/fastvlm_aloha \
-  --model_id=apple/FastVLM-base \
-  --dataset_repo_id=lerobot/aloha_sim_insertion_human_image \
-  --batch_size=2 \
-  --num_workers=2 \
-  --num_epochs=10 \
-  --mixed_precision=bf16
+  --output-dir=outputs/train/fastvlm_aloha \
+  --model-id=apple/FastVLM-base \
+  --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
+  --batch-size=2 \
+  --num-workers=2 \
+  --num-epochs=10 \
+  --mixed-precision=bf16
 ```
 
 Training artifacts:
@@ -75,26 +75,31 @@ Training artifacts:
 - `checkpoints/step-*/policy_config.json`: serialized `FastVLMPolicyConfig`.
 - `checkpoints/step-*/policy_state_dict.pt`: PyTorch weights.
 
-Continue fine-tuning by pointing `--checkpoint_dir` to any previous checkpoint and using `--resume_from` in `TrainingConfig`.
+Continue fine-tuning by pointing `--checkpoint-dir` to any previous checkpoint and using `--resume-from` in `TrainingConfig`.
 
 ## 4. Offline Evaluation (Dataset MSE)
 
 ```bash
 python scripts/eval_dataset.py \
-  --checkpoint_dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
-  --dataset_repo_id=lerobot/aloha_sim_insertion_human_image \
+  --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
+  --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
   --split=validation
 ```
 
+> The public `lerobot/aloha_sim_insertion_human_image` dataset only exposes a `train` split.  
+> Leave the default `--allow-missing-split` flag enabled (fallbacks to `--split=train`) or pass `--split=train` explicitly when running the evaluator.
+
 ## 5. Simulation Rollout
 
-Ensure MuJoCo ≥ 3.1 is installed and `MUJOCO_GL=egl` (set automatically by the script). Then:
+Ensure MuJoCo ≥ 3.1 is installed. The script auto-selects a rendering backend: `egl` on Linux, `glfw` on macOS, and `d3d11` on Windows. Override via `MUJOCO_GL` if you need a different backend or a headless configuration.
+
+Then:
 
 ```bash
 python scripts/run_sim.py \
-  --checkpoint_dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
-  --num_episodes=10 \
-  --video_dir=outputs/eval/pi0_aloha
+  --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
+  --num-episodes=10 \
+  --video-dir=outputs/eval/pi0_aloha
 ```
 
 The command spins up `gym_aloha/AlohaInsertion-v0`, renders each episode, and writes MP4 files into the requested directory.
@@ -114,9 +119,9 @@ class CustomAlohaInterface(AlohaHardwareInterface):
 
 ```bash
 python scripts/run_real.py \
-  --checkpoint_dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
-  --interface_cls=my_robot.interface.CustomAlohaInterface \
-  --interface_kwargs_json="{\"port\":\"/dev/ttyUSB0\",\"camera_topic\":\"camera/top\"}"
+  --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
+  --interface-cls=my_robot.interface.CustomAlohaInterface \
+  --interface-kwargs-json="{\"port\":\"/dev/ttyUSB0\",\"camera_topic\":\"camera/top\"}"
 ```
 
 The runner opens the hardware connection, repeatedly queries the latest observation (`state` + RGB image), predicts the next joint command through the FastVLM policy, and streams it back to the robot at the configured control frequency.
@@ -129,7 +134,7 @@ Device choice is automatic:
 2. Apple MPS backend.
 3. CPU fallback.
 
-Override by exporting `FASTVLM_FORCE_DEVICE=cpu` or `FASTVLM_FORCE_DEVICE=cuda`. Individual scripts also expose `--device_preference` to pin the runtime explicitly.
+Override by exporting `FASTVLM_FORCE_DEVICE=cpu` or `FASTVLM_FORCE_DEVICE=cuda`. Individual scripts also expose `--device-preference` to pin the runtime explicitly.
 
 ## 8. Configuration Files
 

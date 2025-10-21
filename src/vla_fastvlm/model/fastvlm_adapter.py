@@ -3,9 +3,11 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any
+import warnings
 
 import torch
 from torch import nn
+from torch.nn import functional as F
 
 from transformers import (
     AutoModelForCausalLM,
@@ -29,7 +31,7 @@ class FastVLMBackboneConfig:
     # 特徴プーリング: "last_token" | "mean_pool"
     image_feature_pool: str = "last_token"
     # 画像プロセッサが無い時のリサイズ解像度（多くのVLMが 336 or 384）
-    fallback_image_size: int = 336
+    fallback_image_size: int = 512
 
 
 class FastVLMBackbone(nn.Module):
@@ -107,25 +109,23 @@ class FastVLMBackbone(nn.Module):
                 p.requires_grad = False
 
         # ---- torchvision フォールバック（必要時のみ使用）
-        if self.image_processor is None and not _HAS_TV:
-            # 画像プロセッサも torchvision も無いと画像前処理ができない
-            raise RuntimeError(
-                "No image processor found and torchvision is unavailable. "
-                "Install torchvision or provide a valid image processor in the model repo."
-            )
-
-        # torchvision フォールバック用の transform
-        if self.image_processor is None and _HAS_TV:
+        self._tv_transform = None
+        if _HAS_TV:
             size = self.config.fallback_image_size
-            # 標準的な ImageNet 正規化（多くの VLM で互換）
             self._tv_transform = T.Compose([
                 T.Resize((size, size)),
                 T.ConvertImageDtype(torch.float32),
                 T.Normalize(mean=[0.485, 0.456, 0.406],
                             std=[0.229, 0.224, 0.225]),
             ])
-        else:
-            self._tv_transform = None
+        elif self.image_processor is None:
+            # 画像プロセッサも torchvision も無いと画像前処理ができない
+            raise RuntimeError(
+                "No image processor found and torchvision is unavailable. "
+                "Install torchvision or provide a valid image processor in the model repo."
+            )
+
+        self._warned_small_images = False
 
     # -------------------- ヘルパ --------------------
 
@@ -162,6 +162,25 @@ class FastVLMBackbone(nn.Module):
         )
         return {k: v.to(device) for k, v in tok.items()}
 
+    def _ensure_min_resolution(self, images: torch.Tensor) -> torch.Tensor:
+        """
+        Upscale images if they are smaller than the fallback size expected by the backbone.
+        Maintains aspect ratio by scaling based on the shortest edge.
+        """
+        target = getattr(self.config, "fallback_image_size", None)
+        if target is None or images.ndim != 4:
+            return images
+
+        _, _, height, width = images.shape
+        shortest = min(height, width)
+        if shortest >= target:
+            return images
+
+        scale = target / float(shortest)
+        new_height = max(int(round(height * scale)), target)
+        new_width = max(int(round(width * scale)), target)
+        return F.interpolate(images, size=(new_height, new_width), mode="bilinear", align_corners=False)
+
     def _prep_images(self, images: torch.Tensor, device: torch.device) -> Dict[str, torch.Tensor]:
         """
         画像をモデルが受け取りそうな dict にして返す。
@@ -172,24 +191,61 @@ class FastVLMBackbone(nn.Module):
         if images.ndim != 4:
             raise ValueError(f"Expected images as (B,C,H,W), got {images.shape}")
 
-        if self.image_processor is not None:
-            # AutoImageProcessor / processor.image_processor 経由
-            # 多くの実装が PIL 変換不要で Tensor を受け取れる
-            # （受け取れない場合は .tolist() 的な前処理が必要だが稀）
-            out = self.image_processor(
-                list(images),  # バッチ Tensor をリストで渡すと安定
-                return_tensors="pt",
-            )
-            return {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in out.items()}
+        if images.dtype != torch.float32:
+            images = images.float()
+        images = self._ensure_min_resolution(images)
 
-        # torchvision フォールバック
-        assert self._tv_transform is not None
+        target = getattr(self.config, "fallback_image_size", None)
+
+        if self.image_processor is not None:
+            cpu_images = images.detach().to("cpu")
+            try:
+                out = self.image_processor(
+                    list(cpu_images),  # バッチ Tensor をリストで渡すと安定
+                    return_tensors="pt",
+                )
+                needs_fallback = False
+                if target is not None:
+                    for value in out.values():
+                        if isinstance(value, torch.Tensor) and value.ndim == 4:
+                            if min(value.shape[-2:]) < target:
+                                needs_fallback = True
+                                break
+                if not needs_fallback:
+                    return {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in out.items()}
+
+                if not _HAS_TV:
+                    raise RuntimeError(
+                        "Image processor output was smaller than the minimum size "
+                        f"{target}, but torchvision is unavailable for fallback resizing."
+                    )
+                if not self._warned_small_images:
+                    warnings.warn(
+                        "Image processor produced low-resolution tensors; falling back to torchvision "
+                        f"resize at {target}px. Install torchvision for better support or provide "
+                        "a processor that preserves resolution.",
+                        RuntimeWarning,
+                    )
+                    self._warned_small_images = True
+            except Exception:
+                if not _HAS_TV:
+                    raise
+                if not self._warned_small_images:
+                    warnings.warn(
+                        "Falling back to torchvision transforms because the image processor failed.",
+                        RuntimeWarning,
+                    )
+                    self._warned_small_images = True
+
+        if not _HAS_TV or self._tv_transform is None:
+            raise RuntimeError(
+                "Torchvision fallback is required but torchvision is not available. "
+                "Install torchvision>=0.13 or ensure the model repo provides an image processor."
+            )
+
         with torch.no_grad():
-            x = images
-            if x.dtype != torch.float32:
-                x = x.float()
-            # [0,255]→[0,1] の場合は適宜調整（ここではスケール未実施、ConvertImageDtypeが吸収）
-            x = torch.stack([self._tv_transform(img.cpu()) for img in x], dim=0)  # (B,3,H,W)
+            cpu_images = images.detach().to("cpu")
+            x = torch.stack([self._tv_transform(img) for img in cpu_images], dim=0)  # (B,3,H,W)
         return {"pixel_values": x.to(device)}
 
     # -------------------- Forward --------------------
