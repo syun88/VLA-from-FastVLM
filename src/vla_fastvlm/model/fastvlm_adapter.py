@@ -2,12 +2,12 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional, Tuple, Union
 import warnings
 
 import torch
+import torch.nn.functional as F
 from torch import nn
-from torch.nn import functional as F
 
 from transformers import (
     AutoModelForCausalLM,
@@ -16,33 +16,40 @@ from transformers import (
     AutoImageProcessor,
 )
 
-# 画像前処理の最低限を自前で用意（画像プロセッサが無い時のフォールバック）
+# torchvision はフォールバックで使用（PIL/NumPy混在にも強い）
 try:
-    import torchvision.transforms as T
+    import torchvision.transforms.functional as TF
     _HAS_TV = True
 except Exception:
     _HAS_TV = False
+
+
+Tensor = torch.Tensor
+ImageLike = Union[Tensor, "numpy.ndarray", "PIL.Image.Image"]  # type: ignore
 
 
 @dataclass
 class FastVLMBackboneConfig:
     model_id: str = "apple/FastVLM-base"
     freeze_backbone: bool = True
-    # 特徴プーリング: "last_token" | "mean_pool"
+    # "last_token" | "mean_pool"
     image_feature_pool: str = "last_token"
-    # 画像プロセッサが無い時のリサイズ解像度（多くのVLMが 336 or 384）
-    fallback_image_size: int = 512
+    # 最終的にビジョンタワーへ渡す正方形サイズ（model/processorから推定できなければこの値）
+    fallback_image_size: int = 1024 #384
+    # 強制サイズ（指定時は推定を上書き）
+    # force_image_size: Optional[int] = None
+    force_image_size: Optional[int] = 1024
+    # 入力が uint8 のとき [0,1]→ImageNet 正規化まで行うか
+    normalize_imagenet: bool = False
+    # モデルへ渡す画像キーの優先順
+    image_key_order: Tuple[str, ...] = ("images", "pixel_values", "pixel_values_vit")
 
 
 class FastVLMBackbone(nn.Module):
     """
-    FastVLM / LLaVA 系 VLM を特徴抽出器として使うバックボーン。
-
-    特徴:
-    - AutoProcessor が tokenizer-only の場合に備え、tokenizer と image_processor を分離ロード
-    - image_processor が見つからない場合は torchvision でリサイズ&標準化（フォールバック）
-    - CausalLMOutput / BaseModelOutput の両方に対応（hidden_states or last_hidden_state）
-    - モデルが受け付ける画像キー名を複数試行（pixel_values / images など）
+    LLaVA/FastVLM系の VLM を特徴抽出として使うバックボーン。
+    ここで必ず (B,3,S,S) に揃えてから基盤モデルに渡すことで、
+    途中の avg_pool2d(kernel_size=16) 等で 0x0 にならないよう保証する。
     """
 
     def __init__(self, config: FastVLMBackboneConfig | None = None) -> None:
@@ -53,7 +60,7 @@ class FastVLMBackbone(nn.Module):
         self.model = AutoModelForCausalLM.from_pretrained(
             self.config.model_id,
             trust_remote_code=True,
-            dtype=torch.float32,  # macOS/MPS の安定性重視
+            dtype=torch.float32,  # MPS安定性のため既定float32
         )
         if hasattr(self.model, "config"):
             self.model.config.output_hidden_states = True
@@ -68,31 +75,24 @@ class FastVLMBackbone(nn.Module):
             raise ValueError("Could not infer hidden size from model config.")
         self.output_dim = int(hidden_size)
 
-        # ---- 前処理系（できるだけ賢くロード）
+        # ---- Processor/Tokenizer 準備
         self.processor = None
         self.tokenizer = None
         self.image_processor = None
 
-        # 1) AutoProcessor を試す（成功しても tokenizer-only の可能性がある）
         try:
-            proc = AutoProcessor.from_pretrained(self.config.model_id, trust_remote_code=True)
-            self.processor = proc
+            self.processor = AutoProcessor.from_pretrained(self.config.model_id, trust_remote_code=True)
         except Exception:
             self.processor = None
 
-        # 2) tokenizer を確実に用意
         try:
             self.tokenizer = AutoTokenizer.from_pretrained(self.config.model_id, trust_remote_code=True)
         except Exception as e:
-            # AutoProcessor に tokenizer が入っているかも
             if self.processor is not None and hasattr(self.processor, "tokenizer"):
                 self.tokenizer = self.processor.tokenizer
             else:
                 raise e
 
-        # 3) image_processor をできる限り探す
-        #   - AutoProcessor に image_processor が含まれていれば利用
-        #   - 無ければ AutoImageProcessor を試す
         if self.processor is not None and hasattr(self.processor, "image_processor"):
             self.image_processor = self.processor.image_processor
         else:
@@ -103,31 +103,66 @@ class FastVLMBackbone(nn.Module):
             except Exception:
                 self.image_processor = None  # 後で torchvision フォールバック
 
-        # ---- 凍結オプション
+        # ---- 期待画像サイズの決定
+        self.expected_size = self._resolve_expected_image_size()
+
+        # 可能なら processor に明示セット（実装により無視される場合あり）
+        ip = getattr(self, "image_processor", None)
+        try:
+            if ip is not None and hasattr(ip, "size"):
+                desired = {"height": self.expected_size, "width": self.expected_size}
+                try:
+                    cur = ip.size
+                except Exception:
+                    cur = None
+                if cur != desired:
+                    ip.size = desired
+        except Exception:
+            pass
+
+        # ---- 凍結
         if self.config.freeze_backbone:
             for p in self.model.parameters():
                 p.requires_grad = False
 
-        # ---- torchvision フォールバック（必要時のみ使用）
-        self._tv_transform = None
-        if _HAS_TV:
-            size = self.config.fallback_image_size
-            self._tv_transform = T.Compose([
-                T.Resize((size, size)),
-                T.ConvertImageDtype(torch.float32),
-                T.Normalize(mean=[0.485, 0.456, 0.406],
-                            std=[0.229, 0.224, 0.225]),
-            ])
-        elif self.image_processor is None:
-            # 画像プロセッサも torchvision も無いと画像前処理ができない
+        if not _HAS_TV and self.image_processor is None:
             raise RuntimeError(
                 "No image processor found and torchvision is unavailable. "
-                "Install torchvision or provide a valid image processor in the model repo."
+                "Install torchvision or ensure the model repo provides an image processor."
             )
 
-        self._warned_small_images = False
+        print(f"[FastVLMBackbone] expected (S,S) = ({self.expected_size},{self.expected_size})")
 
     # -------------------- ヘルパ --------------------
+
+    def _resolve_expected_image_size(self) -> int:
+        if self.config.force_image_size is not None:
+            return int(self.config.force_image_size)
+
+        # 1) model.config.vision_config.image_size
+        cfg = getattr(self.model, "config", None)
+        if cfg is not None:
+            vcfg = getattr(cfg, "vision_config", None)
+            if vcfg is not None:
+                img_size = getattr(vcfg, "image_size", None)
+                if isinstance(img_size, (int, float)):
+                    return int(img_size)
+                if isinstance(img_size, (tuple, list)) and len(img_size) > 0:
+                    return int(img_size[0])
+
+        # 2) processor.image_processor.size
+        ip = getattr(self, "image_processor", None)
+        if ip is not None and hasattr(ip, "size"):
+            size = getattr(ip, "size")
+            if isinstance(size, dict):
+                h = size.get("height") or size.get("shortest_edge") or size.get("max_height")
+                if isinstance(h, (int, float)):
+                    return int(h)
+            if isinstance(size, (int, float)):
+                return int(size)
+
+        # 3) fallback
+        return int(self.config.fallback_image_size)
 
     @staticmethod
     def _pool_hidden(hidden: torch.Tensor, attention_mask: Optional[torch.Tensor], mode: str) -> torch.Tensor:
@@ -139,17 +174,17 @@ class FastVLMBackbone(nn.Module):
         if mode == "mean_pool":
             if attention_mask is None:
                 return hidden.mean(dim=1)
-            mask = attention_mask.float().unsqueeze(-1)  # (B,T,1)
-            summed = (hidden * mask).sum(dim=1)          # (B,H)
-            denom = mask.sum(dim=1).clamp_min(1e-6)      # (B,1)
+            mask = attention_mask.float().unsqueeze(-1)
+            summed = (hidden * mask).sum(dim=1)
+            denom = mask.sum(dim=1).clamp_min(1e-6)
             return summed / denom
 
         # last_token
         if attention_mask is not None:
-            lengths = attention_mask.long().sum(dim=1)       # (B,)
-            idx = (lengths - 1).clamp_min(0)                 # (B,)
+            lengths = attention_mask.long().sum(dim=1)
+            idx = (lengths - 1).clamp_min(0)
             b, _, h = hidden.size()
-            gather_idx = idx.view(b, 1, 1).expand(b, 1, h)   # (B,1,H)
+            gather_idx = idx.view(b, 1, 1).expand(b, 1, h)
             return hidden.gather(dim=1, index=gather_idx).squeeze(1)
         return hidden[:, -1, :]
 
@@ -162,171 +197,179 @@ class FastVLMBackbone(nn.Module):
         )
         return {k: v.to(device) for k, v in tok.items()}
 
-    def _ensure_min_resolution(self, images: torch.Tensor) -> torch.Tensor:
+    # -------- 画像前処理：必ず (B,3,S,S) を作る --------
+
+    def _as_bchw(self, images: Union[List[ImageLike], ImageLike, Tensor]) -> Tensor:
         """
-        Upscale images if they are smaller than the fallback size expected by the backbone.
-        Maintains aspect ratio by scaling based on the shortest edge.
+        いろいろな形式（PIL / NumPy / Tensor(BCHW/BHWC/CHW/HWC) / list）を BCHW float32 に正規化。
+        値域はそのまま（後で正規化フラグに応じて処理）。
         """
-        target = getattr(self.config, "fallback_image_size", None)
-        if target is None or images.ndim != 4:
-            return images
+        try:
+            import numpy as np
+            from PIL import Image as PILImage  # type: ignore
+        except Exception:
+            np = None
+            PILImage = None  # type: ignore
 
-        _, _, height, width = images.shape
-        shortest = min(height, width)
-        if shortest >= target:
-            return images
+        def _one_to_chw(x) -> Tensor:
+            if isinstance(x, torch.Tensor):
+                t = x
+                if t.ndim == 3:
+                    # CHW or HWC
+                    if t.shape[0] in (1, 3):
+                        return t.to(dtype=torch.float32)
+                    else:
+                        return t.permute(2, 0, 1).to(dtype=torch.float32)
+                elif t.ndim == 2:
+                    return t.unsqueeze(0).to(dtype=torch.float32)
+                else:
+                    raise ValueError(f"Unsupported tensor shape: {tuple(t.shape)}")
+            if np is not None and isinstance(x, np.ndarray):
+                arr = x
+                if arr.ndim == 3 and arr.shape[0] in (1, 3):
+                    return torch.from_numpy(arr).to(dtype=torch.float32)
+                if arr.ndim == 3 and arr.shape[-1] in (1, 3):
+                    return torch.from_numpy(arr).permute(2, 0, 1).to(dtype=torch.float32)
+                raise ValueError(f"Unsupported numpy array shape: {arr.shape}")
+            if PILImage is not None and isinstance(x, PILImage):
+                arr = torch.from_numpy(np.array(x))  # type: ignore
+                if arr.ndim == 3 and arr.shape[-1] in (1, 3):
+                    return arr.permute(2, 0, 1).to(dtype=torch.float32)
+                raise ValueError(f"Unsupported PIL image shape: {arr.shape if hasattr(arr,'shape') else type(x)}")
+            raise TypeError(f"Unsupported image type: {type(x)}")
 
-        scale = target / float(shortest)
-        new_height = max(int(round(height * scale)), target)
-        new_width = max(int(round(width * scale)), target)
-        return F.interpolate(images, size=(new_height, new_width), mode="bilinear", align_corners=False)
+        if isinstance(images, torch.Tensor) and images.ndim == 4:
+            x = images
+            # BHWC → BCHW
+            if x.shape[-1] in (1, 3) and x.shape[1] not in (1, 3):
+                x = x.permute(0, 3, 1, 2)
+            return x.to(dtype=torch.float32)
 
-    def _prep_images(self, images: torch.Tensor, device: torch.device) -> Dict[str, torch.Tensor]:
+        if isinstance(images, torch.Tensor):  # CHW/HWC
+            return _one_to_chw(images).unsqueeze(0)
+
+        if isinstance(images, (list, tuple)):
+            batch: List[Tensor] = []
+            for img in images:
+                chw = _one_to_chw(img)
+                batch.append(chw)
+            return torch.stack(batch, dim=0)
+
+        # PIL/np 1枚
+        chw = _one_to_chw(images)
+        return chw.unsqueeze(0)
+
+    def _resize_square(self, x_bchw: Tensor, S: int) -> Tensor:
+        # 3ch 化
+        if x_bchw.shape[1] == 1:
+            x_bchw = x_bchw.repeat(1, 3, 1, 1)
+        elif x_bchw.shape[1] > 3:
+            x_bchw = x_bchw[:, :3]
+
+        # 正方形リサイズ（歪みを許容：多くの FastViT/HD 系は square 前提）
+        if x_bchw.shape[-2:] != (S, S):
+            x_bchw = F.interpolate(x_bchw, size=(S, S), mode="bilinear", align_corners=False)
+        return x_bchw
+
+    def _maybe_normalize_imagenet(self, x_bchw: Tensor) -> Tensor:
+        if not self.config.normalize_imagenet:
+            return x_bchw
+        if not _HAS_TV:
+            # torchvision が無い環境は簡易実装
+            mean = torch.tensor([0.485, 0.456, 0.406], device=x_bchw.device).view(1, 3, 1, 1)
+            std = torch.tensor([0.229, 0.224, 0.225], device=x_bchw.device).view(1, 3, 1, 1)
+            return (x_bchw - mean) / std
+        # 入力が 0..255 の可能性もあるので float32 で 0..1 に
+        if x_bchw.max() > 1.5:
+            x_bchw = x_bchw / 255.0
+        # TF.normalize と等価
+        mean = [0.485, 0.456, 0.406]
+        std = [0.229, 0.224, 0.225]
+        return TF.normalize(x_bchw, mean=mean, std=std)
+
+    def _prepare_images_tensor(self, images: Union[List[ImageLike], ImageLike, Tensor], device: torch.device) -> Tensor:
         """
-        画像をモデルが受け取りそうな dict にして返す。
-        可能なキー:
-          - "pixel_values"
-          - "images"（一部の trust_remote_code 実装）
+        → (B,3,S,S) float32 tensor（正方形・高解像度を保証）
         """
-        if images.ndim != 4:
-            raise ValueError(f"Expected images as (B,C,H,W), got {images.shape}")
+        S = int(self.expected_size)
+        x = self._as_bchw(images)             # (B,C,H,W)
+        x = x.to(device="cpu")                 # CPUでリサイズ・正規化が安定
+        x = self._resize_square(x, S)          # (B,3,S,S)
+        x = self._maybe_normalize_imagenet(x)  # 正規化（必要な場合）
+        return x.to(device)
 
-        if images.dtype != torch.float32:
-            images = images.float()
-        images = self._ensure_min_resolution(images)
-
-        target = getattr(self.config, "fallback_image_size", None)
-
-        if self.image_processor is not None:
-            cpu_images = images.detach().to("cpu")
-            try:
-                out = self.image_processor(
-                    list(cpu_images),  # バッチ Tensor をリストで渡すと安定
-                    return_tensors="pt",
-                )
-                needs_fallback = False
-                if target is not None:
-                    for value in out.values():
-                        if isinstance(value, torch.Tensor) and value.ndim == 4:
-                            if min(value.shape[-2:]) < target:
-                                needs_fallback = True
-                                break
-                if not needs_fallback:
-                    return {k: (v.to(device) if isinstance(v, torch.Tensor) else v) for k, v in out.items()}
-
-                if not _HAS_TV:
-                    raise RuntimeError(
-                        "Image processor output was smaller than the minimum size "
-                        f"{target}, but torchvision is unavailable for fallback resizing."
-                    )
-                if not self._warned_small_images:
-                    warnings.warn(
-                        "Image processor produced low-resolution tensors; falling back to torchvision "
-                        f"resize at {target}px. Install torchvision for better support or provide "
-                        "a processor that preserves resolution.",
-                        RuntimeWarning,
-                    )
-                    self._warned_small_images = True
-            except Exception:
-                if not _HAS_TV:
-                    raise
-                if not self._warned_small_images:
-                    warnings.warn(
-                        "Falling back to torchvision transforms because the image processor failed.",
-                        RuntimeWarning,
-                    )
-                    self._warned_small_images = True
-
-        if not _HAS_TV or self._tv_transform is None:
-            raise RuntimeError(
-                "Torchvision fallback is required but torchvision is not available. "
-                "Install torchvision>=0.13 or ensure the model repo provides an image processor."
-            )
-
-        with torch.no_grad():
-            cpu_images = images.detach().to("cpu")
-            x = torch.stack([self._tv_transform(img) for img in cpu_images], dim=0)  # (B,3,H,W)
-        return {"pixel_values": x.to(device)}
+    def _pack_image_inputs(self, x_bchw: Tensor, prefer_keys: Tuple[str, ...]) -> List[Dict[str, Tensor]]:
+        """
+        モデル実装の違いに合わせて複数のキー候補を用意
+        """
+        variants: List[Dict[str, Tensor]] = []
+        for k in prefer_keys:
+            variants.append({k: x_bchw})
+        return variants
 
     # -------------------- Forward --------------------
 
+    @torch.no_grad()
     def forward(
         self,
-        images: torch.Tensor,   # (B,C,H,W)
+        images: Union[List[ImageLike], ImageLike, Tensor],
         tasks: List[str],
         device: torch.device | None = None,
-    ) -> torch.Tensor:         # (B, H=self.output_dim)
+    ) -> torch.Tensor:  # (B, H=self.output_dim)
         if device is None:
-            device = images.device
+            # モデルのデバイスに追随
+            device = next(self.model.parameters()).device
 
-        self.model.to(device)
+        # 画像を (B,3,S,S) に固定
+        img_bchw = self._prepare_images_tensor(images, device)
 
+        # テキスト（タスク指示）
         text_inputs = self._prep_text(tasks, device)
-        image_inputs = self._prep_images(images, device)
 
-        # 入力の組み立て
+        # 入力候補（images/pixel_values/pixel_values_vit）
+        image_variants = self._pack_image_inputs(img_bchw, self.config.image_key_order)
+
         common: Dict[str, Any] = dict(
             output_hidden_states=True,
             return_dict=True,
         )
-        inputs = {**text_inputs, **image_inputs}
 
-        # 受け付ける画像キー名がモデルごとに違う可能性に備えてフォールバック実行
-        tried: List[str] = []
-        def _try_call(**kw):
-            out = self.model(**kw)
-            return out
-
-        # 優先順にキーバリアントを試す
-        variants: List[Dict[str, Any]] = []
-
-        # そのまま（pixel_values があるならまずは素直に）
-        variants.append(inputs)
-
-        # images キーに差し替え（trust_remote_code 系で稀に必要）
-        if "pixel_values" in inputs and "images" not in inputs:
-            v = dict(inputs)
-            v["images"] = v.pop("pixel_values")
-            variants.append(v)
-
-        # pixel_values_vit キー（独自実装で見かけることがある）
-        if "pixel_values" in inputs and "pixel_values_vit" not in inputs:
-            v = dict(inputs)
-            v["pixel_values_vit"] = v.pop("pixel_values")
-            variants.append(v)
-
-        # 実行
         last_out = None
-        err: Optional[Exception] = None
-        for cand in variants:
+        last_err: Optional[Exception] = None
+        tried: List[str] = []
+
+        for img_dict in image_variants:
+            inputs = {**text_inputs, **img_dict}
             try:
-                out = _try_call(**cand, **common)
+                out = self.model(**inputs, **common)
                 last_out = out
-                err = None
+                last_err = None
                 break
             except TypeError as e:
-                err = e
-                tried.append(", ".join(sorted([k for k in cand.keys() if k not in text_inputs])))
+                last_err = e
+                tried.append(list(img_dict.keys())[0])
                 continue
 
         if last_out is None:
             raise TypeError(
                 "VLM forward failed for all image-key variants. "
-                f"Tried image key sets: {tried}. Last error: {repr(err)}"
+                f"Tried keys: {tried}. Last error: {repr(last_err)}"
             )
 
         outputs = last_out
 
-        # 出力から (B,T,H) を取り出す
+        # (B,T,H) を取り出し
         if hasattr(outputs, "last_hidden_state") and outputs.last_hidden_state is not None:
             hidden_seq = outputs.last_hidden_state
         elif getattr(outputs, "hidden_states", None) is not None:
             hidden_seq = outputs.hidden_states[-1]
         else:
-            raise RuntimeError(
-                "Backbone did not return hidden states. Ensure output_hidden_states=True."
-            )
+            raise RuntimeError("Backbone did not return hidden states. Ensure output_hidden_states=True.")
 
         attention_mask = text_inputs.get("attention_mask", None)
         pooled = self._pool_hidden(hidden_seq, attention_mask=attention_mask, mode=self.config.image_feature_pool)
         return pooled
+
+    # 互換: 古い呼び出し `self.backbone(images, tasks, device=...)` に対応
+    def backbone(self, images, tasks, device: Optional[torch.device] = None, **kwargs):
+        return self.forward(images, tasks, device=device)
