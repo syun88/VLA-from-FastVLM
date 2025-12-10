@@ -24,3 +24,4 @@ __pycache__/
 /.idea/
 /.vscode/
 /models/
+eval_log.txt
