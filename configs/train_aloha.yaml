@@ -13,6 +13,12 @@ freeze_backbone: true
 hidden_dim: 1024
 fusion_dim: 1024
 dropout: 0.1
+image_size: 512
+resize_with_padding: true
+pad_value: 0.0
+tokenizer_max_length: 64
+tokenizer_padding_side: right
+pad_to_max_length: false
 learning_rate: 0.0001
 weight_decay: 0.0001
 num_epochs: 10

@@ -3,7 +3,6 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional, Tuple, Union
-import warnings
 
 import torch
 import torch.nn.functional as F
@@ -28,6 +27,28 @@ Tensor = torch.Tensor
 ImageLike = Union[Tensor, "numpy.ndarray", "PIL.Image.Image"]  # type: ignore
 
 
+def resize_with_pad(img: Tensor, width: int, height: int, pad_value: float = 0.0) -> Tensor:
+    """
+    Resize while preserving aspect ratio, then pad to (height, width).
+    Padding uses a deterministic top/left fill to avoid distorting geometry.
+    """
+    if img.ndim != 4:
+        raise ValueError(f"(B,C,H,W) expected, but got shape {tuple(img.shape)}")
+
+    cur_height, cur_width = img.shape[2:]
+    ratio = max(cur_width / width, cur_height / height)
+    resized_height = int(cur_height / ratio)
+    resized_width = int(cur_width / ratio)
+    resized_img = F.interpolate(img, size=(resized_height, resized_width), mode="bilinear", align_corners=False)
+
+    pad_height = max(0, int(height - resized_height))
+    pad_width = max(0, int(width - resized_width))
+
+    # Pad on left and top for deterministic placement.
+    padded_img = F.pad(resized_img, (pad_width, 0, pad_height, 0), value=pad_value)
+    return padded_img
+
+
 @dataclass
 class FastVLMBackboneConfig:
     model_id: str = "apple/FastVLM-base"
@@ -35,12 +56,18 @@ class FastVLMBackboneConfig:
     # "last_token" | "mean_pool"
     image_feature_pool: str = "last_token"
     # 最終的にビジョンタワーへ渡す正方形サイズ（model/processorから推定できなければこの値）
-    fallback_image_size: int = 1024 #384
+    fallback_image_size: int = 512
     # 強制サイズ（指定時は推定を上書き）
-    # force_image_size: Optional[int] = None
-    force_image_size: Optional[int] = 1024
+    force_image_size: Optional[int] = None
     # 入力が uint8 のとき [0,1]→ImageNet 正規化まで行うか
     normalize_imagenet: bool = False
+    # レターボックス前処理を有効化するか（アスペクト比を保持）
+    resize_with_padding: bool = True
+    pad_value: float = 0.0
+    # トークナイザー設定
+    tokenizer_max_length: int = 64
+    pad_to_max_length: bool = False
+    tokenizer_padding_side: str = "right"
     # モデルへ渡す画像キーの優先順
     image_key_order: Tuple[str, ...] = ("images", "pixel_values", "pixel_values_vit")
 
@@ -92,6 +119,11 @@ class FastVLMBackbone(nn.Module):
                 self.tokenizer = self.processor.tokenizer
             else:
                 raise e
+        if self.tokenizer is not None:
+            try:
+                self.tokenizer.padding_side = self.config.tokenizer_padding_side
+            except Exception:
+                pass
 
         if self.processor is not None and hasattr(self.processor, "image_processor"):
             self.image_processor = self.processor.image_processor
@@ -189,10 +221,22 @@ class FastVLMBackbone(nn.Module):
         return hidden[:, -1, :]
 
     def _prep_text(self, tasks: List[str], device: torch.device) -> Dict[str, torch.Tensor]:
+        """
+        Tokenize task prompts with predictable padding / truncation so downstream
+        padding is stable.
+        """
+        if self.tokenizer is None:
+            raise RuntimeError("Tokenizer is missing; ensure AutoTokenizer/AutoProcessor is available.")
+        padding = "max_length" if self.config.pad_to_max_length else "longest"
+        try:
+            self.tokenizer.padding_side = self.config.tokenizer_padding_side
+        except Exception:
+            pass
         tok = self.tokenizer(
             tasks,
-            padding=True,
+            padding=padding,
             truncation=True,
+            max_length=self.config.tokenizer_max_length,
             return_tensors="pt",
         )
         return {k: v.to(device) for k, v in tok.items()}
@@ -259,14 +303,21 @@ class FastVLMBackbone(nn.Module):
         chw = _one_to_chw(images)
         return chw.unsqueeze(0)
 
-    def _resize_square(self, x_bchw: Tensor, S: int) -> Tensor:
-        # 3ch 化
+    def _normalize_channels(self, x_bchw: Tensor) -> Tensor:
         if x_bchw.shape[1] == 1:
-            x_bchw = x_bchw.repeat(1, 3, 1, 1)
-        elif x_bchw.shape[1] > 3:
-            x_bchw = x_bchw[:, :3]
+            return x_bchw.repeat(1, 3, 1, 1)
+        if x_bchw.shape[1] > 3:
+            return x_bchw[:, :3]
+        return x_bchw
 
-        # 正方形リサイズ（歪みを許容：多くの FastViT/HD 系は square 前提）
+    def _resize_image(self, x_bchw: Tensor, S: int) -> Tensor:
+        """
+        Resize images to a square. When `resize_with_padding` is enabled we
+        letterbox instead of stretching.
+        """
+        x_bchw = self._normalize_channels(x_bchw)
+        if self.config.resize_with_padding:
+            return resize_with_pad(x_bchw, width=S, height=S, pad_value=self.config.pad_value)
         if x_bchw.shape[-2:] != (S, S):
             x_bchw = F.interpolate(x_bchw, size=(S, S), mode="bilinear", align_corners=False)
         return x_bchw
@@ -294,7 +345,7 @@ class FastVLMBackbone(nn.Module):
         S = int(self.expected_size)
         x = self._as_bchw(images)             # (B,C,H,W)
         x = x.to(device="cpu")                 # CPUでリサイズ・正規化が安定
-        x = self._resize_square(x, S)          # (B,3,S,S)
+        x = self._resize_image(x, S)           # (B,3,S,S)
         x = self._maybe_normalize_imagenet(x)  # 正規化（必要な場合）
         return x.to(device)
 

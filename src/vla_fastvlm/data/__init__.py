@@ -1,13 +1,13 @@
 from .aloha_dataset import (
     AlohaDataset,
     AlohaIterableDataset,
+    AlohaSample,
     create_aloha_dataloader,
-    default_aloha_transforms,
 )
 
 __all__ = [
     "AlohaDataset",
     "AlohaIterableDataset",
+    "AlohaSample",
     "create_aloha_dataloader",
-    "default_aloha_transforms",
 ]

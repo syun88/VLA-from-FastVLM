@@ -2,7 +2,7 @@
 
 日本語版ガイドは [`README_JP.md`](README_JP.md) を参照してください。
 
-End-to-end Vision-Language-Action (VLA) pipeline that fine-tunes Apple’s FastVLM models on the [lerobot/aloha_sim_insertion_human_image](https://huggingface.co/datasets/lerobot/aloha_sim_insertion_human_image) dataset, evaluates on held-out demonstrations, and rolls policies inside the `gym_aloha` MuJoCo simulator or on real Aloha hardware.
+End-to-end Vision-Language-Action (VLA) pipeline that fine-tunes Apple’s FastVLM models on the [lerobot/aloha_sim_insertion_human_image](https://huggingface.co/datasets/lerobot/aloha_sim_insertion_human_image) dataset. The project focuses on offline training/evaluation with a simple FastVLM adapter—no simulator dependency.
 
 ---
 
@@ -13,7 +13,7 @@ End-to-end Vision-Language-Action (VLA) pipeline that fine-tunes Apple’s FastV
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -e ".[sim,real]"
+pip install -e .
 
 # 2) (Optional) Cache the dataset locally
 python - <<'PY'
@@ -22,12 +22,6 @@ load_dataset("lerobot/aloha_sim_insertion_human_image", split="train")
 PY
 
 # 3) Fine-tune FastVLM (10 epochs by default)
-# python scripts/train.py \
-#   --output-dir=outputs/train/fastvlm_aloha \
-#   --model-id=apple/FastVLM-base \
-#   --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
-#   --batch-size=2 --num-workers=2 --num-epochs=10 --mixed-precision=bf16
-# or
 python scripts/train.py \
   --output-dir outputs/train/fastvlm_aloha \
   --model-id "$FASTVLM_BACKBONE_PATH/llava-fastvithd_0.5b_stage3" \
@@ -35,19 +29,16 @@ python scripts/train.py \
   --batch-size 2 \
   --num-workers 0 \
   --num-epochs 10 \
-  --max-steps 1000
+  --max-steps 1000 \
+  --image-size 512 \
+  --resize-with-padding true \
+  --tokenizer-max-length 64
 
 # 4) Evaluate MSE on the dataset (falls back to train split automatically)
 python scripts/eval_dataset.py \
   --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
   --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
   --split=validation
-
-# 5) Run MuJoCo simulation rollouts with MP4 logging
-python scripts/run_sim.py \
-  --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
-  --num-episodes=10 \
-  --video-dir=outputs/eval/pi0_aloha
 ```
 
 Each CLI has `--help` powered by `tyro`; all flags use kebab-case (`--checkpoint-dir`, `--num-epochs`, …).
@@ -57,10 +48,8 @@ Each CLI has `--help` powered by `tyro`; all flags use kebab-case (`--checkpoint
 ## Requirements
 
 - Python ≥ 3.10 with PyTorch ≥ 2.1 (CUDA, MPS, or CPU).
-- MuJoCo 3.1+ for simulation (`MUJOCO_GL` is auto-selected per OS).
-- `gym-aloha` ≥ 0.1.3 (installed through the `[sim]` extra).
+- No MuJoCo / simulator packages are required.
 - Optional: Apple MPS backend (macOS 13+) or NVIDIA GPU.
-- For real hardware: implement a subclass of `AlohaHardwareInterface` and install the `[real]` extra (serial / HID drivers).
 
 ---
 
@@ -69,15 +58,14 @@ Each CLI has `--help` powered by `tyro`; all flags use kebab-case (`--checkpoint
 ```
 .
 ├── configs/                # Example YAML configs
-├── scripts/                # CLI entry points: train / eval / sim / real
+├── scripts/                # CLI entry points: train / eval
 ├── src/vla_fastvlm/        # Python package
 │   ├── data/               # Hugging Face dataset wrappers
 │   ├── model/              # FastVLM adapter and policy head
+│   ├── fastvla/            # FastVLM → VLA components (config / processor / model)
 │   ├── training/           # Accelerate-based trainer & config dataclasses
-│   ├── sim/                # MuJoCo rollout helpers
-│   ├── real/               # Real robot loop abstractions
 │   └── utils/              # Logging, checkpoint, and device helpers
-└── outputs/                # Default artifacts (checkpoints, eval videos, logs)
+└── outputs/                # Default artifacts (checkpoints, logs)
 ```
 
 ---
@@ -93,6 +81,7 @@ Each CLI has `--help` powered by `tyro`; all flags use kebab-case (`--checkpoint
 ## Training (`scripts/train.py`)
 
 - Hyperparameters live in the `TrainArgs` dataclass. Defaults: 10 epochs, batch size 4, streaming disabled.
+- Image preprocessing offers letterboxing (`--resize-with-padding`) and tokenizer controls (`--tokenizer-max-length`, `--pad-to-max-length`, `--tokenizer-padding-side`).
 - `num_epochs` is the stopping criterion when `max_steps` is `null`; adjust either flag to control runtime.
 - Outputs under `outputs/train/<run_name>/`:
   - `training_config.json`: frozen `TrainingConfig` including `num_epochs`/`max_steps`.
@@ -116,24 +105,10 @@ Each CLI has `--help` powered by `tyro`; all flags use kebab-case (`--checkpoint
 
 ---
 
-## Simulation (`scripts/run_sim.py`)
+## Preprocessing Reference
 
-- Wraps `gym_aloha/AlohaInsertion-v0` with auto-rendering, MP4 export, and device selection.
-- Rendering backend defaults per OS: `egl` (Linux), `glfw` (macOS), `d3d11` (Windows). Override with `MUJOCO_GL`.
-- The FastVLM adapter resizes simulator frames to ≥512 px using either the model’s image processor or a torchvision fallback. Expect a one-time warning if the fallback activates.
-- Key flags: `--num-episodes`, `--max-episode-steps`, `--task-instruction`, `--video-dir`, `--record-video=false`.
-- Result summary:
-  ```
-  Episode 000: reward=5.10 steps=287 success=✅
-  ```
-
----
-
-## Real Robot Runner (`scripts/run_real.py`)
-
-- Provide an `AlohaHardwareInterface` subclass (e.g. `my_robot.interface.CustomAlohaInterface`) and optional JSON kwargs via `--interface-kwargs-json`.
-- The runner opens the hardware connection, streams observations through the policy, and prints episode statistics.
-- The same device selection logic applies (`--device-preference`, `FASTVLM_FORCE_DEVICE`).
+- Letterboxing is enabled in `FastVLMBackbone` by default. Disable with `--resize-with-padding=false` to revert to simple stretching.
+- Tokenizer defaults (`--tokenizer-max-length 64`, right padding) keep prompts compact for FastVLM.
 
 ---
 
@@ -141,10 +116,8 @@ Each CLI has `--help` powered by `tyro`; all flags use kebab-case (`--checkpoint
 
 | Script | Purpose | Notable Flags |
 | ------ | ------- | ------------- |
-| `scripts/train.py` | Fine-tune FastVLM | `--output-dir`, `--model-id`, `--dataset-repo-id`, `--num-epochs`, `--max-steps`, `--mixed-precision` |
+| `scripts/train.py` | Fine-tune FastVLM | `--output-dir`, `--model-id`, `--dataset-repo-id`, `--num-epochs`, `--max-steps`, `--image-size`, `--resize-with-padding`, `--tokenizer-max-length` |
 | `scripts/eval_dataset.py` | Offline dataset MSE | `--checkpoint-dir`, `--split`, `--allow-missing-split`, `--limit-samples`, `--streaming` |
-| `scripts/run_sim.py` | MuJoCo rollouts with optional video | `--checkpoint-dir`, `--num-episodes`, `--max-episode-steps`, `--video-dir`, `--device-preference` |
-| `scripts/run_real.py` | Real robot control loop | `--checkpoint-dir`, `--interface-cls`, `--interface-kwargs-json`, `--task-instruction` |
 
 Run any script with `--help` to view the full schema.
 
@@ -155,8 +128,7 @@ Run any script with `--help` to view the full schema.
 - **Dataset split missing**: keep the default `--allow-missing-split` or use `--split=train`.
 - **Slow image processor warnings**: upgrade to the latest fast processors or set `TRANSFORMERS_USE_FAST=1`. The fallback resizer keeps inference stable.
 - **`pin_memory` warning on MPS**: expected; Apple’s backend ignores pinned memory for now.
-- **MuJoCo EGL errors on macOS**: the script now auto-selects `glfw`. Override manually if you prefer another backend.
-- **`gym_aloha` import errors**: ensure `pip install -e ".[sim]"` succeeded and MuJoCo is ≥ 3.1.
+- **OOM with large images**: reduce `--image-size` or disable padding.
 - **Cache location**: set `export HF_HOME=/path/to/cache` to silence `TRANSFORMERS_CACHE` deprecation warnings.
 
 ---

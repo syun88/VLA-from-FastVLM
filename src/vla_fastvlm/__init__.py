@@ -8,10 +8,13 @@ robotic manipulation tasks trained on LeRobot datasets.
 
 from .device import get_best_device, is_cuda_available, is_mps_available
 from .model.policy import FastVLMPolicy
+from .fastvla import FastVLAConfig, FastVLAPolicy
 
 __all__ = [
     "get_best_device",
     "is_cuda_available",
     "is_mps_available",
     "FastVLMPolicy",
+    "FastVLAConfig",
+    "FastVLAPolicy",
 ]
