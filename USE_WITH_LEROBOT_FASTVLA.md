@@ -1,60 +1,66 @@
-# Use FastVLA from LeRobot
+# LeRobotでFastVLAの使い方
 
-このドキュメントは、`VLA-from-FastVLM` の `fastvla` ポリシーを `lerobot-train` から使うための最短手順をまとめたものです。
+このドキュメントは、`VLA-from-FastVLM` の `fastvla` ポリシーを `lerobot-train` で使用するための簡単な手順をまとめたものです。
 
-## 1. 何をしているか
+## 1. 概要
 
-`policy.type=fastvla` は、以下の構成で動作します。
+`policy.type=fastvla` は、次のような構成で動作します：
 
-- Backbone: FastVLM (`LlavaQwen2ForCausalLM`, `model_type=llava_qwen2`)
-- Head: state + vision 特徴を結合する軽量 MLP action head
-- LeRobot 側 integration: plugin (`--policy.discover_packages_path`) で動的登録
+* **バックボーン:** FastVLM (`LlavaQwen2ForCausalLM`, `model_type=llava_qwen2`)
+* **ヘッド:** 状態と視覚特徴を結合する軽量MLPアクションヘッド
+* **LeRobot統合:** プラグインによる動的登録 (`--policy.discover_packages_path`)
 
-`llava_qwen2` は純正 FastVLM の正しい形式です。書き換えは不要です。
+`llava_qwen2` は純正FastVLMの正しい形式で、変更は不要です。
 
-## 2. 前提
+## 2. 前提条件
 
-- LeRobot 環境: `/home/syun/lerobot/.venv`
-- この repo: `/home/syun/VLA-from-FastVLM`
-- 例のローカル checkpoint:
-  - `/home/syun/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3`
+* **LeRobot環境:** `/home/user/lerobot/.venv`
+* **このリポジトリ:** `/home/user/VLA-from-FastVLM` ( `./scripts/download_fastvlm.sh` modelをダウンロードすること)
+* **ローカルチェックポイント:**
 
-## 3. 依存関係をそろえる（LeRobot 側 venv）
+  * `/home/user/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3`
+
+## 3. 依存関係のインストール（LeRobot側venv）
+
+LeRobot環境をアクティベートし、必要なパッケージをインストールします。
 
 ```bash
-source /home/syun/lerobot/.venv/bin/activate
+source /home/user/lerobot/.venv/bin/activate
 
 pip install -U \
   "transformers>=4.57.1,<5.0.0" \
   "timm>=1.0.0" \
   "tyro" \
+  "metaworld" \
   "huggingface-hub[cli,hf-transfer]>=0.34.2,<0.36.0"
 ```
 
-メモ:
+**メモ:**
 
-- `huggingface-hub` は `lerobot` 要件に合わせて `<0.36.0` に固定してください。
-- `HF_USER` はクォート無しで設定してください。
-
-```bash
-export HF_USER=syun88
-```
-
-## 4. Plugin を見つけられるようにする
+* `huggingface-hub` は `lerobot` の要件に合わせて `<0.36.0` に固定してください。
+* `HF_USER` 環境変数を設定します（クォートなし）。
 
 ```bash
-export PYTHONPATH=/home/syun/VLA-from-FastVLM/src:${PYTHONPATH}
+export HF_USER=your_huggingface_username
 ```
 
-## 5. まずは smoke test（10 steps）
+## 4. プラグインを認識させる
 
-Hub push を切って、最小で起動確認します。
+次に、プラグインのパスをPythonパスに追加します。
+
+```bash
+export PYTHONPATH=/home/user/VLA-from-FastVLM/src:${PYTHONPATH}
+```
+
+## 5. 最初の動作確認（Smoke Test）
+
+Hubへのプッシュを無効化して、最小限の手順で動作確認を行います。
 
 ```bash
 lerobot-train \
   --policy.discover_packages_path=vla_fastvlm.lerobot_fastvla \
   --policy.type=fastvla \
-  --policy.vlm_model_name=/home/syun/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
+  --policy.vlm_model_name=/home/user/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
   --policy.bootstrap_model_name=apple/FastVLM-0.5B \
   --policy.push_to_hub=false \
   --dataset.repo_id=lerobot/metaworld_mt50 \
@@ -70,11 +76,13 @@ lerobot-train \
 
 ## 6. 本番学習コマンド例
 
+次に、本番用の学習コマンドです。
+
 ```bash
 lerobot-train \
   --policy.discover_packages_path=vla_fastvlm.lerobot_fastvla \
   --policy.type=fastvla \
-  --policy.vlm_model_name=/home/syun/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
+  --policy.vlm_model_name=/home/user/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
   --policy.bootstrap_model_name=apple/FastVLM-0.5B \
   --policy.repo_id=${HF_USER}/metaworld-fastvla-test \
   --dataset.repo_id=lerobot/metaworld_mt50 \
@@ -90,26 +98,21 @@ lerobot-train \
 
 ## 7. 重要フラグの意味
 
-- `--policy.discover_packages_path`
-  - LeRobot に plugin パッケージを import させます。
-- `--policy.type=fastvla`
-  - plugin 側で登録した policy type を使用します。
-- `--policy.vlm_model_name`
-  - 実際に読み込む FastVLM checkpoint（ローカルパス可）。
-- `--policy.bootstrap_model_name`
-  - `llava_qwen2` ローカル checkpoint で `auto_map` が不足する場合のブートストラップ用 model id。
-- `--policy.push_to_hub=false`
-  - 検証時に Hub へ push しないための安全設定。
+* `--policy.discover_packages_path`: LeRobotにプラグインパッケージをインポートさせるパスです。
+* `--policy.type=fastvla`: プラグインで登録されたポリシータイプを使用します。
+* `--policy.vlm_model_name`: 使用するFastVLMのチェックポイント（ローカルパス可）。
+* `--policy.bootstrap_model_name`: `llava_qwen2` のローカルチェックポイントで `auto_map` が不足する場合のブートストラップ用のモデルID。
+* `--policy.push_to_hub=false`: 検証時にHubへプッシュしないようにする安全設定です。
 
 ## 8. よくあるエラー
 
 ### `No module named 'transformers'`
 
-LeRobot 側 venv に依存が入っていません。セクション 3 の `pip install` を実行してください。
+LeRobot側のvenvに依存パッケージがインストールされていません。セクション3のコマンドを実行してください。
 
 ### `yaml.parser.ParserError` with `"syun88"/repo`
 
-`HF_USER` の中にクォートが入っています。以下で再設定してください。
+`HF_USER` の設定にクォートが含まれています。以下のコマンドで再設定してください。
 
 ```bash
 export HF_USER=syun88
@@ -117,18 +120,17 @@ export HF_USER=syun88
 
 ### `huggingface-hub ... is incompatible`
 
-LeRobot 要件とのバージョン不一致です。`huggingface-hub<0.36.0` に戻してください。
+LeRobotの要件に合わせて、`huggingface-hub<0.36.0` に戻してください。
 
-### plugin import は通るが学習時に model load 失敗
+### プラグインのインポートは成功するが、学習時にモデルのロードに失敗
 
-- `--policy.vlm_model_name` が正しいディレクトリか確認
-- `config.json` が存在するか確認
-- `--policy.bootstrap_model_name` を `apple/FastVLM-0.5B` など有効な FastVLM repo に設定
+* `--policy.vlm_model_name` が正しいディレクトリか確認
+* `config.json` が存在するか確認
+* `--policy.bootstrap_model_name` を `apple/FastVLM-0.5B` など有効なFastVLMリポジトリに設定
 
-## 9. 参考: plugin 実装の場所
+## 9. 参考: プラグインの実装場所
 
-- `src/vla_fastvlm/lerobot_fastvla/configuration_fastvla.py`
-- `src/vla_fastvlm/lerobot_fastvla/modeling_fastvla.py`
-- `src/vla_fastvlm/lerobot_fastvla/processor_fastvla.py`
-- `src/vla_fastvlm/model/fastvlm_adapter.py` (llava_qwen2 bootstrap loader)
-
+* `src/vla_fastvlm/lerobot_fastvla/configuration_fastvla.py`
+* `src/vla_fastvlm/lerobot_fastvla/modeling_fastvla.py`
+* `src/vla_fastvlm/lerobot_fastvla/processor_fastvla.py`
+* `src/vla_fastvlm/model/fastvlm_adapter.py` (llava_qwen2ブートストラップローダー)

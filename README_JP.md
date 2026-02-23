@@ -1,129 +1,102 @@
-# VLA-from-FastVLM（日本語ガイド）
+# VLA-from-FastVLM（日本語）
 
-English version is available in [`README.md`](README.md).
-LeRobot から `fastvla` を使う手順は [`USE_WITH_LEROBOT_FASTVLA.md`](USE_WITH_LEROBOT_FASTVLA.md) を参照してください。
+英語版: [`README.md`](README.md)
 
-Apple FastVLM モデルにアクションヘッドを追加し、[lerobot/aloha_sim_insertion_human_image](https://huggingface.co/datasets/lerobot/aloha_sim_insertion_human_image) データセットでファインチューニングする Vision-Language-Action (VLA) パイプラインです。シミュレータ依存を排除し、オフライン学習/評価に集中しています。
+`VLA-from-FastVLM` は Apple FastVLM を VLA ポリシーとして使うための実装です。
 
----
+- LeRobot 用プラグイン: `policy.type=fastvla`
+- 単体スクリプト: `scripts/train.py` / `scripts/eval_dataset.py`
 
-## クイックスタート
+このREADMEは現在の手順に合わせて更新済みです。古い手順は使わないでください。
+
+## 1. 推奨手順（LeRobotで自作FastVLMを使う）
+
+### 1.1 前提
+
+- `lerobot` リポジトリ（専用venvあり）
+- `VLA-from-FastVLM` リポジトリ
+- ローカルFastVLMチェックポイント（例）
+  - `/home/<you>/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3`
+
+### 1.2 LeRobot側venvに依存を入れる 
 
 ```bash
-# 1) 環境構築
-python -m venv .venv
-source .venv/bin/activate
+source /home/<you>/lerobot/.venv/bin/activate
 python -m pip install --upgrade pip
-pip install -e .
 
-# 2) （任意）データセットをローカルにキャッシュ
-python - <<'PY'
-from datasets import load_dataset
-load_dataset("lerobot/aloha_sim_insertion_human_image", split="train")
-PY
-
-# 3) FastVLM を 10 エポック学習
-python scripts/train.py \
-  --output-dir outputs/train/fastvlm_aloha \
-  --model-id "$FASTVLM_BACKBONE_PATH/llava-fastvithd_0.5b_stage3" \
-  --dataset-repo-id lerobot/aloha_sim_insertion_human_image \
-  --batch-size 2 \
-  --num-workers 0 \
-  --num-epochs 10 \
-  --max-steps 1000 \
-  --image-size 512 \
-  --resize-with-padding true \
-  --tokenizer-max-length 64
-
-# 4) データセット上の MSE 評価（split が存在しない場合は自動フォールバック）
-python scripts/eval_dataset.py \
-  --checkpoint-dir=outputs/train/fastvlm_aloha/checkpoints/step-10000 \
-  --dataset-repo-id=lerobot/aloha_sim_insertion_human_image \
-  --split=validation
+pip install -U \
+  "transformers>=4.57.1,<5.0.0" \
+  "timm>=1.0.0" \
+  "tyro" \
+  "metaworld" \
+  "huggingface-hub[cli,hf-transfer]>=0.34.2,<0.36.0"
 ```
 
-すべてのスクリプトは `tyro` ベースの CLI で、フラグはハイフン区切りです（例: `--checkpoint-dir`）。
+`huggingface-hub<0.36.0` が重要です。  
+LeRobot `0.4.4` では `0.36.0` 以上と依存衝突します。
 
----
-
-## 必要要件
-
-- Python 3.10 以上 + PyTorch 2.1 以上（CUDA / MPS / CPU に対応）。
-- MuJoCo や gym などのシミュレータ依存は不要。
-- Apple MPS または NVIDIA GPU があると高速。
-
----
-
-## ディレクトリ構成
-
-```
-.
-├── configs/                # 参考設定
-├── scripts/                # 学習 / 評価 CLI
-├── src/vla_fastvlm/        # Python パッケージ本体
-│   ├── data/               # データセットラッパー
-│   ├── model/              # FastVLM アダプタ + ポリシーヘッド
-│   ├── fastvla/            # FastVLM を VLA 化する構成 / プロセッサ / モデル
-│   ├── training/           # Accelerate ベースのトレーナー
-│   └── utils/              # ログ / チェックポイント / デバイス補助
-└── outputs/                # 学習成果物（チェックポイント / ログ）
-```
-
----
-
-## FastVLM モデルの取得
-
-- Apple の Model Zoo から `.safetensors` / `.pt` と付属ファイルをダウンロードしてください。
-- 例: `bash scripts/download_fastvlm.sh ./models/apple-fastvlm` で一括取得。`FASTVLM_BACKBONE_PATH` 環境変数を設定すると CLI から参照しやすくなります。
-- Transformers が必要とする Python モジュールが含まれない場合は、Hugging Face CLI で公式スナップショット（例: `apple/FastVLM-0.5B`）を同じディレクトリに展開してください。
-- 重みの再配布時は Apple の `LICENSE` / `LICENSE_MODEL` / `ACKNOWLEDGEMENTS` を必ず同梱してください。
-
----
-
-## データセットのポイント
-
-- 公開データセットは `train` スプリットのみ。`scripts/eval_dataset.py` は既定で `--allow-missing-split` が有効になっており、`--split=validation` を指定しても `train` に切り替わって警告を表示します。明示的に失敗させたい場合は `--allow-missing-split=false` を指定してください。
-- ローカルダウンロードを避けたい場合は `--streaming` を有効にします。
-- 手早く検証するには `--limit-samples 256` や `--batch-size 1` などを組み合わせます。
-- Hugging Face のキャッシュ場所は `HF_HOME` で変更できます。`TRANSFORMERS_CACHE` 非推奨の警告は `HF_HOME` を設定することで解消できます。
-
----
-
-## FastVLM のモデル形式（`llava_qwen2`）
-
-- 純正 FastVLM チェックポイントの `model_type: llava_qwen2` は正しい形式です。手動で書き換えないでください。
-- 一部の Stage2/Stage3 ローカル配布アーカイブは、`AutoModel` で直接ロードするためのメタデータ（`auto_map` など）が不足しています。
-- 本リポジトリではフォールバックを追加しており、`llava_qwen2` のローカルチェックポイントを以下で読み込めます:
-  - `--model-id /path/to/your/local/checkpoint`
-  - `--bootstrap-model-id apple/FastVLM-0.5B`（または互換 FastVLM リポジトリ）
-- `bootstrap-model-id` はクラス定義の読み込みにのみ使用され、実際の重みはローカルチェックポイントを使います。
-
----
-
-## `lerobot-train` で使う
-
-このリポジトリは LeRobot 用プラグイン `policy.type=fastvla` を提供します。
-
-1. LeRobot 側の環境に必要依存（`transformers` / `timm` など）があることを確認。
-2. このリポジトリの `src` を `PYTHONPATH` に追加。
-3. `--policy.discover_packages_path=vla_fastvlm.lerobot_fastvla` を指定。
-
-実行例:
+### 1.3 プラグインをimport可能にする
 
 ```bash
-source /home/syun/lerobot/.venv/bin/activate
-export PYTHONPATH=/home/syun/VLA-from-FastVLM/src:${PYTHONPATH}
+export PYTHONPATH=/home/<you>/VLA-from-FastVLM/src:${PYTHONPATH}
+```
+
+### 1.4 HFユーザー名を設定（クォートなし）
+
+```bash
+export HF_USER=your_hf_username
+```
+
+`HF_USER="name"` のようにクォート付きで入れると、`--policy.repo_id=${HF_USER}/...` で YAML パースエラーになることがあります。
+
+### 1.5 純正FastVLMをダウンロード
+
+```bash
+cd /home/<you>/VLA-from-FastVLM
+bash scripts/download_fastvlm.sh checkpoints
+```
+
+デフォルトでは `llava-fastvithd_7b_stage3` を取得します。
+
+### 1.6 スモークテスト（Hub pushなし）
+
+LeRobotリポジトリで実行:
+
+```bash
+cd /home/<you>/lerobot
 
 lerobot-train \
   --policy.discover_packages_path=vla_fastvlm.lerobot_fastvla \
   --policy.type=fastvla \
-  --policy.vlm_model_name=/home/syun/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
+  --policy.vlm_model_name=/home/<you>/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
+  --policy.bootstrap_model_name=apple/FastVLM-0.5B \
+  --policy.push_to_hub=false \
+  --dataset.repo_id=lerobot/metaworld_mt50 \
+  --env.type=metaworld \
+  --env.task=assembly-v3,dial-turn-v3,handle-press-side-v3 \
+  --output_dir=./outputs_fastvla_smoke \
+  --steps=10 \
+  --batch_size=4 \
+  --eval.batch_size=1 \
+  --eval.n_episodes=1 \
+  --eval_freq=1000
+```
+
+### 1.7 本番学習例
+
+```bash
+cd /home/<you>/lerobot
+
+lerobot-train \
+  --policy.discover_packages_path=vla_fastvlm.lerobot_fastvla \
+  --policy.type=fastvla \
+  --policy.vlm_model_name=/home/<you>/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
   --policy.bootstrap_model_name=apple/FastVLM-0.5B \
   --policy.repo_id=${HF_USER}/metaworld-fastvla-test \
   --dataset.repo_id=lerobot/metaworld_mt50 \
   --env.type=metaworld \
   --env.task=assembly-v3,dial-turn-v3,handle-press-side-v3 \
-  --output_dir=./outputs/ \
+  --output_dir=./outputs \
   --steps=100000 \
   --batch_size=4 \
   --eval.batch_size=1 \
@@ -131,71 +104,95 @@ lerobot-train \
   --eval_freq=1000
 ```
 
-Hub に push しない場合は `--policy.push_to_hub=false` を追加してください（または `--policy.repo_id` を指定）。
+## 2. `llava_qwen2` と `LlavaQwen2ForCausalLM` は必要か？
 
----
+結論: 必要です。純正FastVLMの正しい形式です。
 
-## 学習（`scripts/train.py`）
+- `model_type=llava_qwen2` は公式形式であり、`config.json` を手動変更しないでください。
+- 一部のローカルStage2/Stage3チェックポイントは `auto_map` が不足しており、`AutoModel` 直読み込みで失敗します。
+- そのため `--policy.bootstrap_model_name=apple/FastVLM-0.5B` を指定して、クラス定義だけブートストラップします。
+- 実際の重みは `--policy.vlm_model_name` のローカルチェックポイントが使われます。
 
-- `TrainArgs` dataclass にすべてのハイパーパラメータが定義されています。既定値は 10 エポック、バッチサイズ 4、ストリーミング無効です。
-- レターボックスによる画像前処理（`--resize-with-padding`）やトークナイザー長 (`--tokenizer-max-length` など) を制御できます。不要なら `--resize-with-padding=false` にします。
-- `max_steps` が `null` の場合は `num_epochs` が終了条件になります。学習時間を短縮したい場合は `--num-epochs` を減らすか `--max-steps` を設定してください。
-- 出力内容:
-  - `outputs/train/<run_name>/training_config.json`: 実行時の `TrainingConfig`。
-  - `outputs/train/<run_name>/checkpoints/step-*/`: `policy_state_dict.pt` と `policy_config.json`。
-  - TensorBoard ログ（`tensorboard --logdir outputs/train/fastvlm_aloha` で閲覧）。
-- 継続学習は `--checkpoint-dir` と `--resume-from` を併用して再開できます。
+つまり通常は以下の組み合わせでOKです。
 
----
+- `--policy.vlm_model_name=/path/to/local/FastVLM`
+- `--policy.bootstrap_model_name=apple/FastVLM-0.5B`
 
-## 評価（`scripts/eval_dataset.py`）
+## 3. 単体スクリプトで動かす（LeRobotなし）
 
-- 学習済みポリシーを用いてデータセットの MSE を計測します。
-- バッチサイズ・ワーカー数・ストリーミング有無は学習スクリプトと同じフラグで制御します。
-- Apple MPS では `pin_memory` に関する警告が表示されますが、現状の PyTorch 仕様上は無視して問題ありません。
-- 実行例（`eval_log.txt` より）:
-  ```
-  [eval_dataset] Split 'validation' not found; using 'train' instead.
-  MSE on split 'train': 0.004554
-  ```
-- 手早い検証には `--limit-samples` と `--batch-size 1` の組み合わせが有効です。
+### 3.1 インストール
 
----
+```bash
+cd /home/<you>/VLA-from-FastVLM
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e .
+```
 
-## 前処理リファレンス
+### 3.2 学習
 
-- `FastVLMBackbone` は既定でレターボックスを有効にしています。歪みを許容する場合は `--resize-with-padding=false` を指定してください。
-- トークナイザーの長さ (`--tokenizer-max-length 64`) とパディング位置（右詰め）を短めに設定しています。
+```bash
+python scripts/train.py \
+  --output-dir outputs/train/aloha_fastvlm \
+  --model-id /home/<you>/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
+  --bootstrap-model-id apple/FastVLM-0.5B \
+  --dataset-repo-id lerobot/aloha_sim_insertion_human_image \
+  --num-epochs 5 \
+  --batch-size 4
+```
 
----
+### 3.3 評価
 
-## CLI リファレンス
+```bash
+python scripts/eval_dataset.py \
+  --checkpoint-dir outputs/train/aloha_fastvlm/checkpoints/step-1000 \
+  --dataset-repo-id lerobot/aloha_sim_insertion_human_image \
+  --split validation
+```
 
-| Script | Purpose | Notable Flags |
-| ------ | ------- | ------------- |
-| `scripts/train.py` | FastVLM をファインチューニング | `--output-dir`, `--model-id`, `--bootstrap-model-id`, `--dataset-repo-id`, `--num-epochs`, `--max-steps`, `--image-size`, `--resize-with-padding`, `--tokenizer-max-length` |
-| `scripts/eval_dataset.py` | データセットの MSE 評価 | `--checkpoint-dir`, `--split`, `--allow-missing-split`, `--limit-samples`, `--streaming` |
+`validation` が存在しない場合は既定で `train` にフォールバックします（`--allow-missing-split=true`）。
 
-`--help` を付けて実行するとすべてのフラグが表示されます。
+## 4. 主要フラグ
 
----
+| フラグ | 意味 |
+| --- | --- |
+| `--policy.discover_packages_path` | LeRobotにプラグイン (`vla_fastvlm.lerobot_fastvla`) を読み込ませる。 |
+| `--policy.type=fastvla` | 本リポジトリのポリシーを選択。 |
+| `--policy.vlm_model_name` | 使用するFastVLM本体（ローカル/Hub）。 |
+| `--policy.bootstrap_model_name` | `llava_qwen2` の不足メタデータ補完に使うブートストラップ元。 |
+| `--policy.push_to_hub=false` | スモークテスト時のHub push無効化。 |
 
-## トラブルシュート
+## 5. トラブルシュート
 
-- **データセット split が見つからない**: 既定の `--allow-missing-split` を維持するか、`--split=train` を指定してください。
-- **画像プロセッサの警告**: `TRANSFORMERS_USE_FAST=1` を設定するか最新の fast processor に更新してください。フォールバックのリサイズでも推論は安定します。
-- **MPS 上の `pin_memory` 警告**: 既知の仕様です。CPU メモリのみが対象なので無視して問題ありません。
-- **画像サイズが大きく OOM になる**: `--image-size` を下げるかパディングを無効化してください。
-- **キャッシュ場所**: `HF_HOME=/path/to/cache` で Hugging Face のキャッシュを移動できます。
+- `No module named 'transformers'`
+  - LeRobot側venvに依存が入っていません。`source .../lerobot/.venv/bin/activate` 後に再インストールしてください。
+- `huggingface-hub ... incompatible`
+  - `huggingface-hub[cli,hf-transfer]>=0.34.2,<0.36.0` で入れ直してください。
+- `"user"/repo` 付近の `yaml.parser.ParserError`
+  - `HF_USER` にクォートが混ざっています。`export HF_USER=user` で再設定。
+- `model type 'llava_qwen2' ... not recognize this architecture`
+  - `--policy.bootstrap_model_name=apple/FastVLM-0.5B` を付ける。ローカルモデルの `config.json` 存在も確認。
+- `Split 'validation' not found`
+  - 想定内です。`--split train` を使うかフォールバックをそのまま利用してください。
 
----
+## 6. リポジトリ構成
 
-## ライセンス
+```text
+.
+├── scripts/
+│   ├── download_fastvlm.sh
+│   ├── train.py
+│   └── eval_dataset.py
+├── src/vla_fastvlm/
+│   ├── lerobot_fastvla/     # LeRobotプラグイン (policy.type=fastvla)
+│   ├── fastvla/             # FastVLAのコア実装
+│   └── model/               # FastVLMアダプタ（llava_qwen2フォールバックあり）
+└── USE_WITH_LEROBOT_FASTVLA.md
+```
 
-- リポジトリのコード: MIT License (`LICENSE`)
-- Apple FastVLM のアセット: Apple のライセンス (`third_party/ml-fastvlm`)
-- モデル重みは同梱していません。Apple Model Zoo から取得し、`LICENSE_MODEL` / `ACKNOWLEDGEMENTS` に従ってください。
+## 7. ライセンス
 
----
-
-フィードバック・プルリクエスト歓迎です。新しいタスクに適用したチェックポイントもぜひ共有してください。
+- 本リポジトリのコード: MIT（`LICENSE`）
+- Apple FastVLM関連: `third_party/ml-fastvlm` のライセンスに従う
+- モデル重みは同梱しないため、取得・配布時はAppleの条件を必ず確認する
