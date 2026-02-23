@@ -79,21 +79,30 @@ lerobot-train \
 次に、本番用の学習コマンドです。
 
 ```bash
+
 lerobot-train \
   --policy.discover_packages_path=vla_fastvlm.lerobot_fastvla \
   --policy.type=fastvla \
-  --policy.vlm_model_name=/home/user/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
+  --policy.device=cuda \
+  --policy.vlm_model_name=/home/syun/VLA-from-FastVLM/checkpoints/llava-fastvithd_0.5b_stage3 \
   --policy.bootstrap_model_name=apple/FastVLM-0.5B \
-  --policy.repo_id=${HF_USER}/metaworld-fastvla-test \
+  --policy.image_size=1024 \
+  --policy.push_to_hub=false \
   --dataset.repo_id=lerobot/metaworld_mt50 \
   --env.type=metaworld \
   --env.task=assembly-v3,dial-turn-v3,handle-press-side-v3 \
-  --output_dir=./outputs/ \
+  --output_dir=./outputs_fastvla_full_05b \
   --steps=100000 \
-  --batch_size=4 \
+  --batch_size=1 \
+  --num_workers=2 \
   --eval.batch_size=1 \
   --eval.n_episodes=1 \
-  --eval_freq=1000
+  --eval_freq=5000 \
+  --save_freq=5000 \
+  --wandb.enable=true \
+  --wandb.project=lerobot-fastvla \
+  --wandb.entity=${WANDB_ENTITY} \
+  --wandb.mode=online
 ```
 
 ## 7. 重要フラグの意味
