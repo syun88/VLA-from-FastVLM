@@ -2,6 +2,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -9,10 +12,11 @@ import torch.nn.functional as F
 from torch import nn
 
 from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    AutoProcessor,
+    AutoConfig,
     AutoImageProcessor,
+    AutoModelForCausalLM,
+    AutoProcessor,
+    AutoTokenizer,
 )
 
 # torchvision はフォールバックで使用（PIL/NumPy混在にも強い）
@@ -25,6 +29,7 @@ except Exception:
 
 Tensor = torch.Tensor
 ImageLike = Union[Tensor, "numpy.ndarray", "PIL.Image.Image"]  # type: ignore
+logger = logging.getLogger(__name__)
 
 
 def resize_with_pad(img: Tensor, width: int, height: int, pad_value: float = 0.0) -> Tensor:
@@ -51,7 +56,9 @@ def resize_with_pad(img: Tensor, width: int, height: int, pad_value: float = 0.0
 
 @dataclass
 class FastVLMBackboneConfig:
-    model_id: str = "apple/FastVLM-base"
+    model_id: str = "apple/FastVLM-0.5B"
+    # Used only when loading local llava_qwen2 checkpoints missing `auto_map`.
+    bootstrap_model_id: str = "apple/FastVLM-0.5B"
     freeze_backbone: bool = True
     # "last_token" | "mean_pool"
     image_feature_pool: str = "last_token"
@@ -84,11 +91,7 @@ class FastVLMBackbone(nn.Module):
         self.config = config or FastVLMBackboneConfig()
 
         # ---- モデル本体
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.config.model_id,
-            trust_remote_code=True,
-            dtype=torch.float32,  # MPS安定性のため既定float32
-        )
+        self.model = self._load_model()
         if hasattr(self.model, "config"):
             self.model.config.output_hidden_states = True
 
@@ -164,6 +167,66 @@ class FastVLMBackbone(nn.Module):
             )
 
         print(f"[FastVLMBackbone] expected (S,S) = ({self.expected_size},{self.expected_size})")
+
+    def _load_model(self) -> nn.Module:
+        """Load FastVLM backbone with a compatibility fallback for local llava_qwen2 checkpoints."""
+        model_kwargs = {
+            "trust_remote_code": True,
+            "torch_dtype": torch.float32,  # keep float32 default for MPS stability
+            "low_cpu_mem_usage": True,
+        }
+        try:
+            return AutoModelForCausalLM.from_pretrained(self.config.model_id, **model_kwargs)
+        except ValueError as err:
+            if not self._needs_llava_qwen2_bootstrap(err):
+                raise
+            logger.warning(
+                "Falling back to llava_qwen2 bootstrap loader for local checkpoint '%s'. "
+                "Using bootstrap model config from '%s'.",
+                self.config.model_id,
+                self.config.bootstrap_model_id,
+            )
+            return self._load_llava_qwen2_with_bootstrap(model_kwargs)
+
+    @staticmethod
+    def _needs_llava_qwen2_bootstrap(err: Exception) -> bool:
+        message = str(err)
+        return "model type `llava_qwen2`" in message and "does not recognize this architecture" in message
+
+    def _load_llava_qwen2_with_bootstrap(self, model_kwargs: dict[str, Any]) -> nn.Module:
+        model_path = Path(self.config.model_id)
+        config_path = model_path / "config.json"
+        if not model_path.is_dir() or not config_path.is_file():
+            raise RuntimeError(
+                "llava_qwen2 bootstrap fallback only supports local checkpoint directories containing config.json. "
+                f"Got model_id='{self.config.model_id}'."
+            )
+
+        with open(config_path, encoding="utf-8") as f:
+            local_config = json.load(f)
+
+        if local_config.get("model_type") != "llava_qwen2":
+            raise RuntimeError(
+                "Bootstrap fallback was triggered, but the local model_type is not llava_qwen2. "
+                f"Got '{local_config.get('model_type')}'."
+            )
+
+        try:
+            bootstrap_cfg = AutoConfig.from_pretrained(
+                self.config.bootstrap_model_id,
+                trust_remote_code=True,
+            )
+            llava_config = bootstrap_cfg.__class__.from_pretrained(self.config.model_id)
+            return AutoModelForCausalLM.from_pretrained(
+                self.config.model_id,
+                config=llava_config,
+                **model_kwargs,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to load local llava_qwen2 checkpoint with bootstrap config. "
+                f"model_id='{self.config.model_id}', bootstrap_model_id='{self.config.bootstrap_model_id}'."
+            ) from exc
 
     # -------------------- ヘルパ --------------------
 

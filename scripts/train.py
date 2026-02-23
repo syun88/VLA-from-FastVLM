@@ -34,7 +34,8 @@ class TrainArgs:
     eval_batch_size: int = 4
     num_workers: int = 4
 
-    model_id: str = "apple/FastVLM-base"
+    model_id: str = "apple/FastVLM-0.5B"
+    bootstrap_model_id: str = "apple/FastVLM-0.5B"
     freeze_backbone: bool = True
     hidden_dim: int = 1024
     fusion_dim: int = 1024
@@ -64,6 +65,7 @@ def main(args: TrainArgs) -> None:
 
     policy_config = FastVLAConfig(
         vlm_model_name=args.model_id,
+        bootstrap_model_name=args.bootstrap_model_id,
         freeze_backbone=args.freeze_backbone,
         hidden_dim=args.hidden_dim,
         fusion_dim=args.fusion_dim,

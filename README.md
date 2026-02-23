@@ -78,6 +78,52 @@ Each CLI has `--help` powered by `tyro`; all flags use kebab-case (`--checkpoint
 
 ---
 
+## FastVLM model format (`llava_qwen2`)
+
+- The official FastVLM checkpoints use `model_type: llava_qwen2`. This is expected and should not be changed manually.
+- Some local Stage2/Stage3 archives do not include enough metadata for direct `AutoModel` loading.
+- This project now supports a bootstrap fallback: if your local checkpoint is `llava_qwen2` and missing `auto_map`, set:
+  - `--model-id /path/to/your/local/checkpoint`
+  - `--bootstrap-model-id apple/FastVLM-0.5B` (or another compatible FastVLM repo)
+- The bootstrap repo is only used to import the correct config/model classes; your local weights remain the source of truth.
+
+---
+
+## Use with `lerobot-train`
+
+This repository now exposes a LeRobot plugin policy type: `fastvla`.
+
+1. Ensure your LeRobot environment has compatible deps (`transformers`, `timm`, etc.).
+2. Add this repo to `PYTHONPATH` so LeRobot can import the plugin package.
+3. Pass `--policy.discover_packages_path=vla_fastvlm.lerobot_fastvla`.
+
+Example:
+
+```bash
+source /home/syun/lerobot/.venv/bin/activate
+export PYTHONPATH=/home/syun/VLA-from-FastVLM/src:${PYTHONPATH}
+
+lerobot-train \
+  --policy.discover_packages_path=vla_fastvlm.lerobot_fastvla \
+  --policy.type=fastvla \
+  --policy.vlm_model_name=/home/syun/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
+  --policy.bootstrap_model_name=apple/FastVLM-0.5B \
+  --policy.repo_id=${HF_USER}/metaworld-fastvla-test \
+  --dataset.repo_id=lerobot/metaworld_mt50 \
+  --env.type=metaworld \
+  --env.task=assembly-v3,dial-turn-v3,handle-press-side-v3 \
+  --output_dir=./outputs/ \
+  --steps=100000 \
+  --batch_size=4 \
+  --eval.batch_size=1 \
+  --eval.n_episodes=1 \
+  --eval_freq=1000
+```
+
+If you do not want Hub upload, add `--policy.push_to_hub=false` (or provide `--policy.repo_id`).
+
+---
+
 ## Training (`scripts/train.py`)
 
 - Hyperparameters live in the `TrainArgs` dataclass. Defaults: 10 epochs, batch size 4, streaming disabled.
@@ -116,7 +162,7 @@ Each CLI has `--help` powered by `tyro`; all flags use kebab-case (`--checkpoint
 
 | Script | Purpose | Notable Flags |
 | ------ | ------- | ------------- |
-| `scripts/train.py` | Fine-tune FastVLM | `--output-dir`, `--model-id`, `--dataset-repo-id`, `--num-epochs`, `--max-steps`, `--image-size`, `--resize-with-padding`, `--tokenizer-max-length` |
+| `scripts/train.py` | Fine-tune FastVLM | `--output-dir`, `--model-id`, `--bootstrap-model-id`, `--dataset-repo-id`, `--num-epochs`, `--max-steps`, `--image-size`, `--resize-with-padding`, `--tokenizer-max-length` |
 | `scripts/eval_dataset.py` | Offline dataset MSE | `--checkpoint-dir`, `--split`, `--allow-missing-split`, `--limit-samples`, `--streaming` |
 
 Run any script with `--help` to view the full schema.

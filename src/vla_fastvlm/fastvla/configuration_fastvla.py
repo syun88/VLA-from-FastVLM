@@ -13,7 +13,8 @@ class FastVLAConfig:
     Mirrors the structure of the SmolVLA config but keeps a FastVLM backbone.
     """
 
-    vlm_model_name: str = "apple/FastVLM-base"
+    vlm_model_name: str = "apple/FastVLM-0.5B"
+    bootstrap_model_name: str = "apple/FastVLM-0.5B"
     state_dim: int = 14
     action_dim: int = 14
     hidden_dim: int = 1024
@@ -34,6 +35,7 @@ class FastVLAConfig:
         """Translate to the backbone adapter config."""
         return FastVLMBackboneConfig(
             model_id=self.vlm_model_name,
+            bootstrap_model_id=self.bootstrap_model_name,
             freeze_backbone=self.freeze_backbone,
             force_image_size=self.image_size,
             resize_with_padding=self.resize_with_padding,

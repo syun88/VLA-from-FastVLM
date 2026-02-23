@@ -1,6 +1,7 @@
 # VLA-from-FastVLM（日本語ガイド）
 
 English version is available in [`README.md`](README.md).
+LeRobot から `fastvla` を使う手順は [`USE_WITH_LEROBOT_FASTVLA.md`](USE_WITH_LEROBOT_FASTVLA.md) を参照してください。
 
 Apple FastVLM モデルにアクションヘッドを追加し、[lerobot/aloha_sim_insertion_human_image](https://huggingface.co/datasets/lerobot/aloha_sim_insertion_human_image) データセットでファインチューニングする Vision-Language-Action (VLA) パイプラインです。シミュレータ依存を排除し、オフライン学習/評価に集中しています。
 
@@ -88,6 +89,52 @@ python scripts/eval_dataset.py \
 
 ---
 
+## FastVLM のモデル形式（`llava_qwen2`）
+
+- 純正 FastVLM チェックポイントの `model_type: llava_qwen2` は正しい形式です。手動で書き換えないでください。
+- 一部の Stage2/Stage3 ローカル配布アーカイブは、`AutoModel` で直接ロードするためのメタデータ（`auto_map` など）が不足しています。
+- 本リポジトリではフォールバックを追加しており、`llava_qwen2` のローカルチェックポイントを以下で読み込めます:
+  - `--model-id /path/to/your/local/checkpoint`
+  - `--bootstrap-model-id apple/FastVLM-0.5B`（または互換 FastVLM リポジトリ）
+- `bootstrap-model-id` はクラス定義の読み込みにのみ使用され、実際の重みはローカルチェックポイントを使います。
+
+---
+
+## `lerobot-train` で使う
+
+このリポジトリは LeRobot 用プラグイン `policy.type=fastvla` を提供します。
+
+1. LeRobot 側の環境に必要依存（`transformers` / `timm` など）があることを確認。
+2. このリポジトリの `src` を `PYTHONPATH` に追加。
+3. `--policy.discover_packages_path=vla_fastvlm.lerobot_fastvla` を指定。
+
+実行例:
+
+```bash
+source /home/syun/lerobot/.venv/bin/activate
+export PYTHONPATH=/home/syun/VLA-from-FastVLM/src:${PYTHONPATH}
+
+lerobot-train \
+  --policy.discover_packages_path=vla_fastvlm.lerobot_fastvla \
+  --policy.type=fastvla \
+  --policy.vlm_model_name=/home/syun/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
+  --policy.bootstrap_model_name=apple/FastVLM-0.5B \
+  --policy.repo_id=${HF_USER}/metaworld-fastvla-test \
+  --dataset.repo_id=lerobot/metaworld_mt50 \
+  --env.type=metaworld \
+  --env.task=assembly-v3,dial-turn-v3,handle-press-side-v3 \
+  --output_dir=./outputs/ \
+  --steps=100000 \
+  --batch_size=4 \
+  --eval.batch_size=1 \
+  --eval.n_episodes=1 \
+  --eval_freq=1000
+```
+
+Hub に push しない場合は `--policy.push_to_hub=false` を追加してください（または `--policy.repo_id` を指定）。
+
+---
+
 ## 学習（`scripts/train.py`）
 
 - `TrainArgs` dataclass にすべてのハイパーパラメータが定義されています。既定値は 10 エポック、バッチサイズ 4、ストリーミング無効です。
@@ -126,7 +173,7 @@ python scripts/eval_dataset.py \
 
 | Script | Purpose | Notable Flags |
 | ------ | ------- | ------------- |
-| `scripts/train.py` | FastVLM をファインチューニング | `--output-dir`, `--model-id`, `--dataset-repo-id`, `--num-epochs`, `--max-steps`, `--image-size`, `--resize-with-padding`, `--tokenizer-max-length` |
+| `scripts/train.py` | FastVLM をファインチューニング | `--output-dir`, `--model-id`, `--bootstrap-model-id`, `--dataset-repo-id`, `--num-epochs`, `--max-steps`, `--image-size`, `--resize-with-padding`, `--tokenizer-max-length` |
 | `scripts/eval_dataset.py` | データセットの MSE 評価 | `--checkpoint-dir`, `--split`, `--allow-missing-split`, `--limit-samples`, `--streaming` |
 
 `--help` を付けて実行するとすべてのフラグが表示されます。

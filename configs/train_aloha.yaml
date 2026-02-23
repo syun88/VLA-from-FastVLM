@@ -8,7 +8,8 @@ num_workers: 8
 streaming: false
 limit_train_samples: null
 limit_eval_samples: 2048
-model_id: apple/FastVLM-base
+model_id: apple/FastVLM-0.5B
+bootstrap_model_id: apple/FastVLM-0.5B
 freeze_backbone: true
 hidden_dim: 1024
 fusion_dim: 1024
