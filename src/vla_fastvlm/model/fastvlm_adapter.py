@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import json
 import logging
 from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
@@ -140,6 +141,17 @@ class FastVLMBackbone(nn.Module):
 
         # ---- 期待画像サイズの決定
         self.expected_size = self._resolve_expected_image_size()
+        declared_size, tower_name = self._resolve_declared_tower_size()
+        if (
+            declared_size is not None
+            and self.config.force_image_size is not None
+            and int(self.expected_size) < int(declared_size)
+        ):
+            raise ValueError(
+                "Configured image_size is too small for this FastVLM vision tower. "
+                f"force_image_size={self.expected_size}, tower={tower_name}, required>={declared_size}. "
+                "Set image_size to the declared tower size (e.g. 1024) or leave it unset (None) for auto-detection."
+            )
 
         # 可能なら processor に明示セット（実装により無視される場合あり）
         ip = getattr(self, "image_processor", None)
@@ -245,6 +257,12 @@ class FastVLMBackbone(nn.Module):
                 if isinstance(img_size, (tuple, list)) and len(img_size) > 0:
                     return int(img_size[0])
 
+            # Some FastVLM checkpoints encode the expected size in the tower name
+            # (e.g. "mobileclip_l_1024"), without exposing vision_config.image_size.
+            tower_size, _ = self._resolve_declared_tower_size()
+            if tower_size is not None:
+                return int(tower_size)
+
         # 2) processor.image_processor.size
         ip = getattr(self, "image_processor", None)
         if ip is not None and hasattr(ip, "size"):
@@ -258,6 +276,63 @@ class FastVLMBackbone(nn.Module):
 
         # 3) fallback
         return int(self.config.fallback_image_size)
+
+    def _resolve_declared_tower_size(self) -> tuple[Optional[int], Optional[str]]:
+        cfg = getattr(self.model, "config", None)
+        if cfg is None:
+            return None, None
+
+        candidates = [
+            getattr(cfg, "mm_vision_tower", None),
+            getattr(cfg, "vision_tower", None),
+        ]
+        vcfg = getattr(cfg, "vision_config", None)
+        if vcfg is not None:
+            candidates.append(getattr(vcfg, "model_name", None))
+            candidates.append(getattr(vcfg, "name_or_path", None))
+
+        for tower_name in candidates:
+            tower_size = self._infer_size_from_tower_name(tower_name)
+            if tower_size is not None:
+                return tower_size, str(tower_name)
+        return None, None
+
+    @staticmethod
+    def _infer_size_from_tower_name(tower_name: Any) -> Optional[int]:
+        if not isinstance(tower_name, str):
+            return None
+
+        name = tower_name.lower()
+
+        # Common patterns:
+        # - mobileclip_l_1024
+        # - ...-384
+        # - ...patch14-384
+        for pattern in (
+            r"(?:^|[_-])(\d{2,4})$",
+            r"patch\d+[-_](\d{2,4})(?:$|[_-])",
+        ):
+            match = re.search(pattern, name)
+            if match is not None:
+                value = int(match.group(1))
+                if 64 <= value <= 4096:
+                    return value
+
+        # Fallback: take the last plausible number token, but ignore model-scale
+        # suffixes like "so400m" where 400 is not image resolution.
+        fallback_values: List[int] = []
+        for match in re.finditer(r"(\d{2,4})", name):
+            value = int(match.group(1))
+            if not (64 <= value <= 4096):
+                continue
+            suffix = name[match.end() : match.end() + 1]
+            if suffix in {"m", "b"}:
+                continue
+            fallback_values.append(value)
+
+        if fallback_values:
+            return fallback_values[-1]
+        return None
 
     @staticmethod
     def _pool_hidden(hidden: torch.Tensor, attention_mask: Optional[torch.Tensor], mode: str) -> torch.Tensor:

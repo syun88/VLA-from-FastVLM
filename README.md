@@ -56,7 +56,7 @@ cd /home/<you>/VLA-from-FastVLM
 bash scripts/download_fastvlm.sh
 ```
 
-By default this script downloads `llava-fastvithd_7b_stage3`.
+By default this script downloads `llava-fastvithd_0.5b_stage3`.
 
 ### 1.6 Smoke test (no Hub push)
 
@@ -68,7 +68,7 @@ cd /home/<you>/lerobot
 lerobot-train \
   --policy.discover_packages_path=vla_fastvlm.lerobot_fastvla \
   --policy.type=fastvla \
-  --policy.vlm_model_name=/home/<you>/VLA-from-FastVLM/checkpoints/llava-fastvithd_7b_stage3 \
+  --policy.vlm_model_name=/home/<you>/VLA-from-FastVLM/checkpoints/llava-fastvithd_0.5b_stage3 \
   --policy.bootstrap_model_name=apple/FastVLM-0.5B \
   --policy.push_to_hub=false \
   --dataset.repo_id=lerobot/metaworld_mt50 \

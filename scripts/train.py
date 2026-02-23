@@ -40,7 +40,7 @@ class TrainArgs:
     hidden_dim: int = 1024
     fusion_dim: int = 1024
     dropout: float = 0.1
-    image_size: Optional[int] = 512
+    image_size: Optional[int] = None
     resize_with_padding: bool = True
     pad_value: float = 0.0
     tokenizer_max_length: int = 64

@@ -43,7 +43,7 @@ class FastVLAConfig(PreTrainedConfig):
     tokenizer_padding_side: str = "right"
     pad_to_max_length: bool = False
     resize_with_padding: bool = True
-    image_size: int | None = 512
+    image_size: int | None = None
     pad_value: float = 0.0
     add_trailing_newline: bool = True
 
@@ -104,4 +104,3 @@ class FastVLAConfig(PreTrainedConfig):
     @property
     def reward_delta_indices(self) -> None:
         return None
-

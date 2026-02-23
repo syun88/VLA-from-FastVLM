@@ -14,11 +14,11 @@ mkdir -p "${CHECKPOINT_DIR}"
 base_url="https://ml-site.cdn-apple.com/datasets/fastvlm"
 files=(
   # "llava-fastvithd_0.5b_stage2.zip"
-  # "llava-fastvithd_0.5b_stage3.zip"
+  "llava-fastvithd_0.5b_stage3.zip"
   # "llava-fastvithd_1.5b_stage2.zip"
   # "llava-fastvithd_1.5b_stage3.zip"
   # "llava-fastvithd_7b_stage2.zip"
-  "llava-fastvithd_7b_stage3.zip"
+  # "llava-fastvithd_7b_stage3.zip"
 )
 
 echo "Downloading FastVLM checkpoints into '${CHECKPOINT_DIR}'..."

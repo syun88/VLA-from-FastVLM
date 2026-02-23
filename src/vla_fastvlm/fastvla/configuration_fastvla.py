@@ -27,7 +27,7 @@ class FastVLAConfig:
     tokenizer_padding_side: str = "right"
     pad_to_max_length: bool = False
     resize_with_padding: bool = True
-    image_size: Optional[int] = 512
+    image_size: Optional[int] = None
     pad_value: float = 0.0
     add_trailing_newline: bool = True
 
