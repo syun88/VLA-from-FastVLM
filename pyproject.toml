@@ -25,10 +25,7 @@ dependencies = [
     "accelerate",
     "datasets",
     "einops",
-    "gymnasium",
     "huggingface-hub",
-    "imageio",
-    "mujoco",
     "numpy",
     "pillow",
     "pyyaml",
@@ -41,14 +38,6 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-sim = [
-    "gym-aloha",
-    "moviepy",
-]
-real = [
-    "hidapi",
-    "pyserial",
-]
 dev = [
     "black",
     "ruff",

@@ -13,8 +13,7 @@ from vla_fastvlm.data import (
     AlohaIterableDataset,
     create_aloha_dataloader,
 )
-from vla_fastvlm.model.policy import FastVLMPolicy, FastVLMPolicyConfig
-from vla_fastvlm.model.fastvlm_adapter import FastVLMBackboneConfig
+from vla_fastvlm.fastvla import FastVLAConfig, FastVLAPolicy
 from vla_fastvlm.training import Trainer, TrainingConfig
 from vla_fastvlm.utils import configure_logging
 
@@ -35,11 +34,18 @@ class TrainArgs:
     eval_batch_size: int = 4
     num_workers: int = 4
 
-    model_id: str = "apple/FastVLM-base"
+    model_id: str = "apple/FastVLM-0.5B"
+    bootstrap_model_id: str = "apple/FastVLM-0.5B"
     freeze_backbone: bool = True
     hidden_dim: int = 1024
     fusion_dim: int = 1024
     dropout: float = 0.1
+    image_size: Optional[int] = None
+    resize_with_padding: bool = True
+    pad_value: float = 0.0
+    tokenizer_max_length: int = 64
+    tokenizer_padding_side: str = "right"
+    pad_to_max_length: bool = False
 
     learning_rate: float = 1e-4
     weight_decay: float = 1e-4
@@ -57,17 +63,21 @@ def main(args: TrainArgs) -> None:
     configure_logging()
     Path(args.output_dir).mkdir(parents=True, exist_ok=True)
 
-    backbone_config = FastVLMBackboneConfig(
-        model_id=args.model_id,
+    policy_config = FastVLAConfig(
+        vlm_model_name=args.model_id,
+        bootstrap_model_name=args.bootstrap_model_id,
         freeze_backbone=args.freeze_backbone,
-    )
-    policy_config = FastVLMPolicyConfig(
-        backbone=backbone_config,
         hidden_dim=args.hidden_dim,
         fusion_dim=args.fusion_dim,
         dropout=args.dropout,
+        image_size=args.image_size,
+        resize_with_padding=args.resize_with_padding,
+        pad_value=args.pad_value,
+        tokenizer_max_length=args.tokenizer_max_length,
+        tokenizer_padding_side=args.tokenizer_padding_side,
+        pad_to_max_length=args.pad_to_max_length,
     )
-    policy = FastVLMPolicy(policy_config)
+    policy = FastVLAPolicy(policy_config)
 
     if args.streaming:
         train_dataset = AlohaIterableDataset(split=args.train_split, repo_id=args.dataset_repo_id)

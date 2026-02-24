@@ -1,11 +1,12 @@
 
 import json
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union
 
 import torch
 
 from vla_fastvlm.device import get_best_device
+from vla_fastvlm.fastvla import FastVLAConfig, FastVLAPolicy
 from vla_fastvlm.model.policy import FastVLMPolicy, FastVLMPolicyConfig
 from vla_fastvlm.model.fastvlm_adapter import FastVLMBackboneConfig
 
@@ -14,7 +15,7 @@ def load_policy_from_checkpoint(
     checkpoint_dir: str | Path,
     device_preference: Optional[str] = None,
     strict: bool = True,
-) -> Tuple[FastVLMPolicy, torch.device]:
+) -> Tuple[Union[FastVLMPolicy, FastVLAPolicy], torch.device]:
     """Load FastVLM policy weights from a checkpoint directory."""
     checkpoint_path = Path(checkpoint_dir)
     config_path = checkpoint_path / "policy_config.json"
@@ -28,9 +29,14 @@ def load_policy_from_checkpoint(
     with open(config_path, "r", encoding="utf-8") as f:
         config_dict = json.load(f)
 
-    backbone_cfg = FastVLMBackboneConfig(**config_dict.pop("backbone"))
-    policy_cfg = FastVLMPolicyConfig(backbone=backbone_cfg, **config_dict)
-    policy = FastVLMPolicy(policy_cfg)
+    # Detect which policy to instantiate based on stored config keys.
+    if "vlm_model_name" in config_dict:
+        policy_cfg = FastVLAConfig(**config_dict)
+        policy = FastVLAPolicy(policy_cfg)
+    else:
+        backbone_cfg = FastVLMBackboneConfig(**config_dict.pop("backbone"))
+        policy_cfg = FastVLMPolicyConfig(backbone=backbone_cfg, **config_dict)
+        policy = FastVLMPolicy(policy_cfg)
 
     state_dict = torch.load(weights_path, map_location="cpu")
     policy.load_state_dict(state_dict, strict=strict)

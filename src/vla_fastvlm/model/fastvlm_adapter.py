@@ -2,18 +2,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import json
+import logging
+from pathlib import Path
+import re
 from typing import Any, Dict, List, Optional, Tuple, Union
-import warnings
 
 import torch
 import torch.nn.functional as F
 from torch import nn
 
 from transformers import (
-    AutoModelForCausalLM,
-    AutoTokenizer,
-    AutoProcessor,
+    AutoConfig,
     AutoImageProcessor,
+    AutoModelForCausalLM,
+    AutoProcessor,
+    AutoTokenizer,
 )
 
 # torchvision はフォールバックで使用（PIL/NumPy混在にも強い）
@@ -26,21 +30,52 @@ except Exception:
 
 Tensor = torch.Tensor
 ImageLike = Union[Tensor, "numpy.ndarray", "PIL.Image.Image"]  # type: ignore
+logger = logging.getLogger(__name__)
+
+
+def resize_with_pad(img: Tensor, width: int, height: int, pad_value: float = 0.0) -> Tensor:
+    """
+    Resize while preserving aspect ratio, then pad to (height, width).
+    Padding uses a deterministic top/left fill to avoid distorting geometry.
+    """
+    if img.ndim != 4:
+        raise ValueError(f"(B,C,H,W) expected, but got shape {tuple(img.shape)}")
+
+    cur_height, cur_width = img.shape[2:]
+    ratio = max(cur_width / width, cur_height / height)
+    resized_height = int(cur_height / ratio)
+    resized_width = int(cur_width / ratio)
+    resized_img = F.interpolate(img, size=(resized_height, resized_width), mode="bilinear", align_corners=False)
+
+    pad_height = max(0, int(height - resized_height))
+    pad_width = max(0, int(width - resized_width))
+
+    # Pad on left and top for deterministic placement.
+    padded_img = F.pad(resized_img, (pad_width, 0, pad_height, 0), value=pad_value)
+    return padded_img
 
 
 @dataclass
 class FastVLMBackboneConfig:
-    model_id: str = "apple/FastVLM-base"
+    model_id: str = "apple/FastVLM-0.5B"
+    # Used only when loading local llava_qwen2 checkpoints missing `auto_map`.
+    bootstrap_model_id: str = "apple/FastVLM-0.5B"
     freeze_backbone: bool = True
     # "last_token" | "mean_pool"
     image_feature_pool: str = "last_token"
     # 最終的にビジョンタワーへ渡す正方形サイズ（model/processorから推定できなければこの値）
-    fallback_image_size: int = 1024 #384
+    fallback_image_size: int = 512
     # 強制サイズ（指定時は推定を上書き）
-    # force_image_size: Optional[int] = None
-    force_image_size: Optional[int] = 1024
+    force_image_size: Optional[int] = None
     # 入力が uint8 のとき [0,1]→ImageNet 正規化まで行うか
     normalize_imagenet: bool = False
+    # レターボックス前処理を有効化するか（アスペクト比を保持）
+    resize_with_padding: bool = True
+    pad_value: float = 0.0
+    # トークナイザー設定
+    tokenizer_max_length: int = 64
+    pad_to_max_length: bool = False
+    tokenizer_padding_side: str = "right"
     # モデルへ渡す画像キーの優先順
     image_key_order: Tuple[str, ...] = ("images", "pixel_values", "pixel_values_vit")
 
@@ -57,11 +92,7 @@ class FastVLMBackbone(nn.Module):
         self.config = config or FastVLMBackboneConfig()
 
         # ---- モデル本体
-        self.model = AutoModelForCausalLM.from_pretrained(
-            self.config.model_id,
-            trust_remote_code=True,
-            dtype=torch.float32,  # MPS安定性のため既定float32
-        )
+        self.model = self._load_model()
         if hasattr(self.model, "config"):
             self.model.config.output_hidden_states = True
 
@@ -92,6 +123,11 @@ class FastVLMBackbone(nn.Module):
                 self.tokenizer = self.processor.tokenizer
             else:
                 raise e
+        if self.tokenizer is not None:
+            try:
+                self.tokenizer.padding_side = self.config.tokenizer_padding_side
+            except Exception:
+                pass
 
         if self.processor is not None and hasattr(self.processor, "image_processor"):
             self.image_processor = self.processor.image_processor
@@ -105,6 +141,17 @@ class FastVLMBackbone(nn.Module):
 
         # ---- 期待画像サイズの決定
         self.expected_size = self._resolve_expected_image_size()
+        declared_size, tower_name = self._resolve_declared_tower_size()
+        if (
+            declared_size is not None
+            and self.config.force_image_size is not None
+            and int(self.expected_size) < int(declared_size)
+        ):
+            raise ValueError(
+                "Configured image_size is too small for this FastVLM vision tower. "
+                f"force_image_size={self.expected_size}, tower={tower_name}, required>={declared_size}. "
+                "Set image_size to the declared tower size (e.g. 1024) or leave it unset (None) for auto-detection."
+            )
 
         # 可能なら processor に明示セット（実装により無視される場合あり）
         ip = getattr(self, "image_processor", None)
@@ -133,6 +180,66 @@ class FastVLMBackbone(nn.Module):
 
         print(f"[FastVLMBackbone] expected (S,S) = ({self.expected_size},{self.expected_size})")
 
+    def _load_model(self) -> nn.Module:
+        """Load FastVLM backbone with a compatibility fallback for local llava_qwen2 checkpoints."""
+        model_kwargs = {
+            "trust_remote_code": True,
+            "torch_dtype": torch.float32,  # keep float32 default for MPS stability
+            "low_cpu_mem_usage": True,
+        }
+        try:
+            return AutoModelForCausalLM.from_pretrained(self.config.model_id, **model_kwargs)
+        except ValueError as err:
+            if not self._needs_llava_qwen2_bootstrap(err):
+                raise
+            logger.warning(
+                "Falling back to llava_qwen2 bootstrap loader for local checkpoint '%s'. "
+                "Using bootstrap model config from '%s'.",
+                self.config.model_id,
+                self.config.bootstrap_model_id,
+            )
+            return self._load_llava_qwen2_with_bootstrap(model_kwargs)
+
+    @staticmethod
+    def _needs_llava_qwen2_bootstrap(err: Exception) -> bool:
+        message = str(err)
+        return "model type `llava_qwen2`" in message and "does not recognize this architecture" in message
+
+    def _load_llava_qwen2_with_bootstrap(self, model_kwargs: dict[str, Any]) -> nn.Module:
+        model_path = Path(self.config.model_id)
+        config_path = model_path / "config.json"
+        if not model_path.is_dir() or not config_path.is_file():
+            raise RuntimeError(
+                "llava_qwen2 bootstrap fallback only supports local checkpoint directories containing config.json. "
+                f"Got model_id='{self.config.model_id}'."
+            )
+
+        with open(config_path, encoding="utf-8") as f:
+            local_config = json.load(f)
+
+        if local_config.get("model_type") != "llava_qwen2":
+            raise RuntimeError(
+                "Bootstrap fallback was triggered, but the local model_type is not llava_qwen2. "
+                f"Got '{local_config.get('model_type')}'."
+            )
+
+        try:
+            bootstrap_cfg = AutoConfig.from_pretrained(
+                self.config.bootstrap_model_id,
+                trust_remote_code=True,
+            )
+            llava_config = bootstrap_cfg.__class__.from_pretrained(self.config.model_id)
+            return AutoModelForCausalLM.from_pretrained(
+                self.config.model_id,
+                config=llava_config,
+                **model_kwargs,
+            )
+        except Exception as exc:
+            raise RuntimeError(
+                "Failed to load local llava_qwen2 checkpoint with bootstrap config. "
+                f"model_id='{self.config.model_id}', bootstrap_model_id='{self.config.bootstrap_model_id}'."
+            ) from exc
+
     # -------------------- ヘルパ --------------------
 
     def _resolve_expected_image_size(self) -> int:
@@ -150,6 +257,12 @@ class FastVLMBackbone(nn.Module):
                 if isinstance(img_size, (tuple, list)) and len(img_size) > 0:
                     return int(img_size[0])
 
+            # Some FastVLM checkpoints encode the expected size in the tower name
+            # (e.g. "mobileclip_l_1024"), without exposing vision_config.image_size.
+            tower_size, _ = self._resolve_declared_tower_size()
+            if tower_size is not None:
+                return int(tower_size)
+
         # 2) processor.image_processor.size
         ip = getattr(self, "image_processor", None)
         if ip is not None and hasattr(ip, "size"):
@@ -163,6 +276,63 @@ class FastVLMBackbone(nn.Module):
 
         # 3) fallback
         return int(self.config.fallback_image_size)
+
+    def _resolve_declared_tower_size(self) -> tuple[Optional[int], Optional[str]]:
+        cfg = getattr(self.model, "config", None)
+        if cfg is None:
+            return None, None
+
+        candidates = [
+            getattr(cfg, "mm_vision_tower", None),
+            getattr(cfg, "vision_tower", None),
+        ]
+        vcfg = getattr(cfg, "vision_config", None)
+        if vcfg is not None:
+            candidates.append(getattr(vcfg, "model_name", None))
+            candidates.append(getattr(vcfg, "name_or_path", None))
+
+        for tower_name in candidates:
+            tower_size = self._infer_size_from_tower_name(tower_name)
+            if tower_size is not None:
+                return tower_size, str(tower_name)
+        return None, None
+
+    @staticmethod
+    def _infer_size_from_tower_name(tower_name: Any) -> Optional[int]:
+        if not isinstance(tower_name, str):
+            return None
+
+        name = tower_name.lower()
+
+        # Common patterns:
+        # - mobileclip_l_1024
+        # - ...-384
+        # - ...patch14-384
+        for pattern in (
+            r"(?:^|[_-])(\d{2,4})$",
+            r"patch\d+[-_](\d{2,4})(?:$|[_-])",
+        ):
+            match = re.search(pattern, name)
+            if match is not None:
+                value = int(match.group(1))
+                if 64 <= value <= 4096:
+                    return value
+
+        # Fallback: take the last plausible number token, but ignore model-scale
+        # suffixes like "so400m" where 400 is not image resolution.
+        fallback_values: List[int] = []
+        for match in re.finditer(r"(\d{2,4})", name):
+            value = int(match.group(1))
+            if not (64 <= value <= 4096):
+                continue
+            suffix = name[match.end() : match.end() + 1]
+            if suffix in {"m", "b"}:
+                continue
+            fallback_values.append(value)
+
+        if fallback_values:
+            return fallback_values[-1]
+        return None
 
     @staticmethod
     def _pool_hidden(hidden: torch.Tensor, attention_mask: Optional[torch.Tensor], mode: str) -> torch.Tensor:
@@ -189,10 +359,22 @@ class FastVLMBackbone(nn.Module):
         return hidden[:, -1, :]
 
     def _prep_text(self, tasks: List[str], device: torch.device) -> Dict[str, torch.Tensor]:
+        """
+        Tokenize task prompts with predictable padding / truncation so downstream
+        padding is stable.
+        """
+        if self.tokenizer is None:
+            raise RuntimeError("Tokenizer is missing; ensure AutoTokenizer/AutoProcessor is available.")
+        padding = "max_length" if self.config.pad_to_max_length else "longest"
+        try:
+            self.tokenizer.padding_side = self.config.tokenizer_padding_side
+        except Exception:
+            pass
         tok = self.tokenizer(
             tasks,
-            padding=True,
+            padding=padding,
             truncation=True,
+            max_length=self.config.tokenizer_max_length,
             return_tensors="pt",
         )
         return {k: v.to(device) for k, v in tok.items()}
@@ -259,14 +441,21 @@ class FastVLMBackbone(nn.Module):
         chw = _one_to_chw(images)
         return chw.unsqueeze(0)
 
-    def _resize_square(self, x_bchw: Tensor, S: int) -> Tensor:
-        # 3ch 化
+    def _normalize_channels(self, x_bchw: Tensor) -> Tensor:
         if x_bchw.shape[1] == 1:
-            x_bchw = x_bchw.repeat(1, 3, 1, 1)
-        elif x_bchw.shape[1] > 3:
-            x_bchw = x_bchw[:, :3]
+            return x_bchw.repeat(1, 3, 1, 1)
+        if x_bchw.shape[1] > 3:
+            return x_bchw[:, :3]
+        return x_bchw
 
-        # 正方形リサイズ（歪みを許容：多くの FastViT/HD 系は square 前提）
+    def _resize_image(self, x_bchw: Tensor, S: int) -> Tensor:
+        """
+        Resize images to a square. When `resize_with_padding` is enabled we
+        letterbox instead of stretching.
+        """
+        x_bchw = self._normalize_channels(x_bchw)
+        if self.config.resize_with_padding:
+            return resize_with_pad(x_bchw, width=S, height=S, pad_value=self.config.pad_value)
         if x_bchw.shape[-2:] != (S, S):
             x_bchw = F.interpolate(x_bchw, size=(S, S), mode="bilinear", align_corners=False)
         return x_bchw
@@ -294,7 +483,7 @@ class FastVLMBackbone(nn.Module):
         S = int(self.expected_size)
         x = self._as_bchw(images)             # (B,C,H,W)
         x = x.to(device="cpu")                 # CPUでリサイズ・正規化が安定
-        x = self._resize_square(x, S)          # (B,3,S,S)
+        x = self._resize_image(x, S)           # (B,3,S,S)
         x = self._maybe_normalize_imagenet(x)  # 正規化（必要な場合）
         return x.to(device)
 

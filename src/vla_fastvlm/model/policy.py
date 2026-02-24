@@ -48,21 +48,38 @@ class FastVLMPolicy(nn.Module):
         )
         self.action_head = nn.Linear(self.config.fusion_dim, self.config.action_dim)
 
+    def _normalize_tasks(self, tasks: List[str] | str, batch_size: int) -> List[str]:
+        """
+        Normalize task prompts:
+        - accept a single string and broadcast to the batch
+        - ensure consistent trailing newline for tokenizer behaviour
+        """
+        if isinstance(tasks, str):
+            tasks = [tasks]
+        if len(tasks) == 1 and batch_size > 1:
+            tasks = [tasks[0] for _ in range(batch_size)]
+        return [task if task.endswith("\n") else f"{task}\n" for task in tasks]
+
     def forward(
         self,
         images: torch.Tensor,
         states: torch.Tensor,
-        tasks: List[str],
+        tasks: List[str] | str,
         device: torch.device | None = None,
     ) -> torch.Tensor:
         """
         Compute the next action for a batch of observations.
         """
+        if images.ndim == 5:
+            images = images[:, -1]
         if images.ndim != 4:
             raise ValueError(f"Expected images to be (B,C,H,W) got {images.shape}")
+        if states.ndim == 3:
+            states = states[:, -1]
         if device is None:
             device = images.device
 
+        tasks = self._normalize_tasks(tasks, batch_size=images.shape[0])
         backbone_features = self.backbone(images, tasks, device=device)
         state_features = self.state_projection(states)
         fused = torch.cat([backbone_features, state_features], dim=-1)
@@ -92,7 +109,8 @@ class FastVLMPolicy(nn.Module):
         self.eval()
         image_batch = image.unsqueeze(0).to(device)
         state_batch = state.unsqueeze(0).to(device)
-        action = self.forward(image_batch, state_batch, [task], device=device)
+        tasks = self._normalize_tasks(task, batch_size=1)
+        action = self.forward(image_batch, state_batch, tasks, device=device)
         return action.squeeze(0)
 
     def reset(self) -> None:
