@@ -1,5 +1,7 @@
 # VLA-from-FastVLM（日本語）
 
+[![CI](https://github.com/syun88/VLA-from-FastVLM/actions/workflows/ci.yml/badge.svg)](https://github.com/syun88/VLA-from-FastVLM/actions/workflows/ci.yml)
+
 英語版: [`README.md`](README.md)
 
 `VLA-from-FastVLM` は Apple FastVLM を VLA ポリシーとして使うための実装です。
@@ -8,6 +10,32 @@
 - 単体スクリプト: `scripts/train.py` / `scripts/eval_dataset.py`
 
 このREADMEは現在の手順に合わせて更新済みです。古い手順は使わないでください。
+
+## なぜ重要か
+
+Vision-Language-Action 研究では、高速なVLMバックボーンをロボットポリシーの
+学習・評価スタックへ再現可能に接続するための実装が必要です。このリポジトリは
+Apple FastVLMチェックポイントをVLAポリシーとして使えるようにし、LeRobot用の
+プラグイン入口と、再現時につまずきやすい依存・チェックポイント手順をまとめます。
+
+これは個人研究用の一回限りのコードではなく、LeRobot / FastVLM / ALOHA系データセット /
+実ロボット展開に取り組むVLA研究者向けのOSS基盤として育てることを目的にしています。
+
+## ロードマップ
+
+- `v0.1.x`: alpha版LeRobotプラグイン手順の安定化、依存ピンの更新、対応LeRobot版の
+  compatibility matrix整備。
+- `v0.2`: ALOHA / MetaWorldタスク向けのデータセット・評価スモークテストとベンチマーク記録。
+- `v0.3`: チェックポイント配布、Hub連携、再現可能な学習・評価レポートの改善。
+- 将来: 安全上の注意、オペレーター制御、ハードウェア別設定を明示した実ロボットrollout検証。
+
+## 既知の制限
+
+- 現時点ではalphaリリースです。API、設定名、依存ピンは変更される可能性があります。
+- 実ロボットでの実行は未検証です。ハードウェア実行前に独立した安全制御を用意してください。
+- モデル重みは同梱していません。FastVLMチェックポイントは各自で取得し、Appleのライセンス条件に従ってください。
+- LeRobot手順は主に `0.4.4` を前提にしています。新しい版は明示的な互換性追跡が必要です。
+- CIは大きなチェックポイントのダウンロードを避けるため、フルのモデルロードや実機テストは今後の課題です。
 
 ## 1. 推奨手順（LeRobotで自作FastVLMを使う）
 

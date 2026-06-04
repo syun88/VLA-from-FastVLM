@@ -6,7 +6,7 @@ import json
 import logging
 from pathlib import Path
 import re
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import TYPE_CHECKING, Any, Dict, List, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F
@@ -26,6 +26,10 @@ try:
     _HAS_TV = True
 except Exception:
     _HAS_TV = False
+
+if TYPE_CHECKING:
+    import numpy
+    import PIL.Image
 
 
 Tensor = torch.Tensor

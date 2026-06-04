@@ -1,5 +1,7 @@
 # VLA-from-FastVLM
 
+[![CI](https://github.com/syun88/VLA-from-FastVLM/actions/workflows/ci.yml/badge.svg)](https://github.com/syun88/VLA-from-FastVLM/actions/workflows/ci.yml)
+
 Japanese guide: [`README_JP.md`](README_JP.md)
 
 `VLA-from-FastVLM` adapts Apple FastVLM checkpoints to a VLA policy and exposes:
@@ -7,6 +9,42 @@ Japanese guide: [`README_JP.md`](README_JP.md)
 - Standalone training/eval scripts (`scripts/train.py`, `scripts/eval_dataset.py`)
 
 This README is the current workflow. Old commands were removed.
+
+## Why this matters
+
+Vision-Language-Action researchers increasingly need small, reproducible bridges
+between fast vision-language backbones and robot policy stacks. This repository
+focuses on that bridge: it makes Apple FastVLM checkpoints usable as a VLA
+policy, provides a LeRobot plugin entrypoint, and documents the practical
+dependency and checkpoint details that block reproduction.
+
+The goal is not a private one-off experiment. The project is intended as OSS
+infrastructure for researchers and maintainers working across LeRobot, FastVLM,
+ALOHA-style datasets, and real robot rollout pipelines.
+
+## Roadmap
+
+- `v0.1.x`: stabilize the alpha LeRobot plugin workflow, keep dependency pins
+  current, and publish a compatibility matrix for supported LeRobot releases.
+- `v0.2`: add stronger dataset/evaluation smoke tests and documented benchmark
+  runs for ALOHA and MetaWorld tasks.
+- `v0.3`: improve checkpoint packaging, Hub integration, and reproducible
+  training/evaluation reports.
+- Future: validate real robot rollout with explicit safety notes, operator
+  controls, and hardware-specific configuration.
+
+## Known limitations
+
+- This is an alpha release. APIs, config names, and compatibility pins may still
+  change.
+- Real robot execution is not validated yet; use independent safety controls
+  before running policies on hardware.
+- Model weights are not bundled. Users must download FastVLM checkpoints and
+  follow the relevant Apple license terms.
+- The LeRobot workflow is currently documented around LeRobot `0.4.4`; newer
+  versions need explicit compatibility tracking.
+- CI intentionally avoids downloading large checkpoints, so full model-loading
+  and hardware tests remain manual or future integration work.
 
 ## 1. Recommended workflow (LeRobot + custom FastVLM)
 

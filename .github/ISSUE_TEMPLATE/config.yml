@@ -1,0 +1,5 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Security report
+    url: https://github.com/syun88/VLA-from-FastVLM/security
+    about: Please use private vulnerability reporting for security-sensitive issues.
