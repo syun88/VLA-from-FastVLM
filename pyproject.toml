@@ -41,6 +41,7 @@ dev = [
     "black",
     "ruff",
     "pytest",
+    "tomli; python_version < '3.11'",
 ]
 
 [tool.setuptools.packages.find]
