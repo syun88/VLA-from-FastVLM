@@ -24,7 +24,6 @@ class Args:
     seed: int = 42
     max_steps: int = 2000
     lora_learning_rate: float = 1e-4
-    action_head_learning_rate: float = 3e-4
     weight_decay: float = 1e-4
     warmup_ratio: float = 0.05
     lora_rank: int = 8
@@ -116,7 +115,6 @@ def main(args: Args) -> None:
     metadata_path = final / "metadata.json"
     metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
     metadata["splits"] = split_by_task
-    metadata["action_head_learning_rate_requested"] = args.action_head_learning_rate
     metadata_path.write_text(json.dumps(metadata, indent=2), encoding="utf-8")
     print(f"saved={final}")
 

@@ -59,6 +59,7 @@ def main(args: Args) -> None:
             "metaworld",
             "counterfactual-language" if args.counterfactual else "nominal-language",
         ),
+        group=args.group,
         mode=args.wandb_mode,
     )
     try:

@@ -229,6 +229,7 @@ class CachedActionTrainer:
                 "trainable_parameter_count": self._trainable_parameter_count(),
             },
             tags=("fastvlm", "frozen", "action-head", *cfg.wandb_tags),
+            group=self.policy_config.backbone_mode,
             mode=cfg.wandb_mode,
         )
         loss_and_grad = nn.value_and_grad(
@@ -285,7 +286,8 @@ class CachedActionTrainer:
                         "train/wall_clock_seconds": time.perf_counter() - started,
                         **{f"memory/{k}": v for k, v in mlx_memory_stats().items()},
                     }
-                    tracker.log(last_metrics, step=global_step)
+                    if global_step % cfg.log_every == 0:
+                        tracker.log(last_metrics, step=global_step)
                     global_step += 1
 
                 if epoch % cfg.eval_every_epochs == 0 or epoch == cfg.epochs - 1:
@@ -367,6 +369,8 @@ class CachedActionTrainer:
         metadata = {
             **git_metadata(Path(__file__).resolve().parents[3]),
             **runtime_metadata(),
+            "policy": self.policy_config.to_dict(),
+            "training": asdict(self.train_config),
             "epoch": epoch,
             "global_step": global_step,
             "optimizer_steps": global_step,
@@ -464,6 +468,7 @@ class LoRAActionTrainer:
                 "runtime": runtime_metadata(),
             },
             tags=("fastvlm", "lora", "action-chunking", *cfg.wandb_tags),
+            group="fastvlm-lora",
             mode=cfg.wandb_mode,
         )
         if self.policy.backbone.model is None:
@@ -510,20 +515,21 @@ class LoRAActionTrainer:
                     grad_value = float(grad_norm.item())
                     losses.append(loss_value)
                     grad_norms.append(grad_value)
-                    tracker.log(
-                        {
-                            "train/loss": loss_value,
-                            "train/first_action_mse": float(metrics["first_action_mse"].item()),
-                            "train/gradient_norm": grad_value,
-                            "train/learning_rate": float(self.optimizer.learning_rate.item()),
-                            "train/global_step": float(step),
-                            "train/samples_processed": float(step + 1),
-                            "train/wall_clock_seconds": time.perf_counter() - started,
-                            "train/lora_delta_norm": float(self._lora_delta_norm().item()),
-                            **{f"memory/{k}": v for k, v in mlx_memory_stats().items()},
-                        },
-                        step=step,
-                    )
+                    if step % cfg.log_every == 0:
+                        tracker.log(
+                            {
+                                "train/loss": loss_value,
+                                "train/first_action_mse": float(metrics["first_action_mse"].item()),
+                                "train/gradient_norm": grad_value,
+                                "train/learning_rate": float(self.optimizer.learning_rate.item()),
+                                "train/global_step": float(step),
+                                "train/samples_processed": float(step + 1),
+                                "train/wall_clock_seconds": time.perf_counter() - started,
+                                "train/lora_delta_norm": float(self._lora_delta_norm().item()),
+                                **{f"memory/{k}": v for k, v in mlx_memory_stats().items()},
+                            },
+                            step=step,
+                        )
                     step += 1
                     if step % max(cfg.save_every_epochs * 100, 200) == 0:
                         self.save_checkpoint(
@@ -590,6 +596,8 @@ class LoRAActionTrainer:
         metadata = {
             **git_metadata(Path(__file__).resolve().parents[3]),
             **runtime_metadata(),
+            "policy": self.policy_config.to_dict(),
+            "training": asdict(self.train_config),
             "global_step": step,
             "dataset": self.dataset.metadata(),
             **(tracker.provenance() if tracker is not None else {}),

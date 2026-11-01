@@ -17,6 +17,7 @@ class FastVLAConfig:
     base_model: str = "apple/FastVLM-0.5B"
     base_model_path: str | None = None
     base_revision: str = "16375720c2d673fa583e57e9876afde27549c7d0"
+    backbone_family: Literal["fastvlm", "smolvlm"] = "fastvlm"
     backbone_mode: BackboneMode = "frozen"
     action_horizon: int = 8
     state_dim: int | None = None
@@ -54,6 +55,8 @@ class FastVLAConfig:
                 raise ValueError("At least one FastVLM feature path must be enabled")
         if self.backbone_mode not in {"frozen", "lora", "state_only", "vision_only"}:
             raise ValueError(f"Unsupported backbone_mode: {self.backbone_mode}")
+        if self.backbone_family not in {"fastvlm", "smolvlm"}:
+            raise ValueError(f"Unsupported backbone_family: {self.backbone_family}")
         if self.backbone_mode == "state_only":
             self.use_global_feature = False
             self.use_spatial_features = False
@@ -115,7 +118,7 @@ class TrainConfig:
     weight_decay: float = 1e-4
     warmup_ratio: float = 0.05
     grad_clip_norm: float = 1.0
-    log_every: int = 1
+    log_every: int = 10
     eval_every_epochs: int = 2
     save_every_epochs: int = 10
     wandb_project: str = "fastvlm-vla-research"

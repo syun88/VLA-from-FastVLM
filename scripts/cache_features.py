@@ -35,6 +35,8 @@ class Args:
     base_model_path: str = "/Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx"
     base_model: str = "apple/FastVLM-0.5B"
     base_revision: str = "16375720c2d673fa583e57e9876afde27549c7d0"
+    backbone_family: str = "fastvlm"
+    visual_hidden_size: int = 896
     dataset_revision: str = "a59f742d218c903328164257ecf180f9b18018a1"
     image_longest_edge: int = 1024
     frame_stride: int = 2
@@ -113,19 +115,28 @@ def _cache_task(args: Args, task_name: str, task_data, split) -> Path:
             "normalization": normalization,
         },
         tags=("fastvlm", "feature-cache", "metaworld"),
+        group="feature-cache-v1",
         mode=args.wandb_mode,
     )
-    backbone = FastVLMBackbone(
-        FastVLAConfig(
-            base_model=args.base_model,
-            base_model_path=args.base_model_path,
-            base_revision=args.base_revision,
-            image_longest_edge=args.image_longest_edge,
-            state_dim=state_dim,
-            action_dim=action_dim,
-            action_horizon=args.action_horizon,
-        )
+    policy_config = FastVLAConfig(
+        base_model=args.base_model,
+        base_model_path=args.base_model_path,
+        base_revision=args.base_revision,
+        backbone_family=args.backbone_family,
+        image_longest_edge=args.image_longest_edge,
+        visual_hidden_size=args.visual_hidden_size,
+        state_dim=state_dim,
+        action_dim=action_dim,
+        action_horizon=args.action_horizon,
     )
+    if args.backbone_family == "fastvlm":
+        backbone = FastVLMBackbone(policy_config)
+    elif args.backbone_family == "smolvlm":
+        from vla_fastvlm.fastvla.alternate_backbone import SmolVLMBackbone
+
+        backbone = SmolVLMBackbone(policy_config)
+    else:
+        raise ValueError(f"Unsupported backbone family: {args.backbone_family}")
 
     def initialize(first_features) -> dict[str, np.ndarray]:
         arrays = {
@@ -227,6 +238,8 @@ def _cache_task(args: Args, task_name: str, task_data, split) -> Path:
         "base_model": args.base_model,
         "base_model_path": args.base_model_path,
         "base_revision": args.base_revision,
+        "backbone_family": args.backbone_family,
+        "visual_hidden_size": args.visual_hidden_size,
         "dataset_id": "lerobot/metaworld_mt50",
         "dataset_revision": args.dataset_revision,
         "split": split.as_dict(),

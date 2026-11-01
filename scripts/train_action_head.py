@@ -29,6 +29,11 @@ class Args:
     eval_every_epochs: int = 2
     save_every_epochs: int = 10
     head_hidden_dim: int = 512
+    backbone_family: str = "fastvlm"
+    base_model: str = "apple/FastVLM-0.5B"
+    base_model_path: str = "/Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx"
+    base_revision: str = "16375720c2d673fa583e57e9876afde27549c7d0"
+    visual_hidden_size: int = 896
     spatial_grid: int = 4
     spatial_token_dim: int = 64
     action_horizon: int = 8
@@ -67,11 +72,16 @@ def main(args: Args) -> None:
     train_indices = np.concatenate(train_parts)
 
     policy_config = FastVLAConfig(
+        base_model=args.base_model,
+        base_model_path=args.base_model_path,
+        base_revision=args.base_revision,
+        backbone_family=args.backbone_family,
         backbone_mode=args.backbone_mode,
         state_dim=state_dims.pop(),
         action_dim=action_dims.pop(),
         action_horizon=args.action_horizon,
         head_hidden_dim=args.head_hidden_dim,
+        visual_hidden_size=args.visual_hidden_size,
         spatial_grid=args.spatial_grid,
         spatial_token_dim=args.spatial_token_dim,
         use_global_feature=args.use_global_feature

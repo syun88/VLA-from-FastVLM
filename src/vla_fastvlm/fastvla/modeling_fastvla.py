@@ -126,7 +126,14 @@ class MLXFastVLAPolicy:
 
     def __init__(self, config: FastVLAConfig, *, load_backbone: bool = True) -> None:
         self.config = config
-        self.backbone = FastVLMBackbone(config, load_model=False)
+        if config.backbone_family == "fastvlm":
+            self.backbone = FastVLMBackbone(config, load_model=False)
+        elif config.backbone_family == "smolvlm":
+            from .alternate_backbone import SmolVLMBackbone
+
+            self.backbone = SmolVLMBackbone(config, load_model=False)
+        else:  # pragma: no cover - validated by FastVLAConfig
+            raise ValueError(f"Unsupported backbone family: {config.backbone_family}")
         self.action_policy: ActionPolicy | None = None
         if load_backbone and config.uses_vlm:
             self.backbone.load()

@@ -65,6 +65,7 @@ class ExperimentTracker:
         name: str,
         config: dict[str, Any],
         tags: tuple[str, ...] = (),
+        group: str | None = None,
         mode: str = "online",
     ) -> None:
         self.run = None
@@ -81,8 +82,8 @@ class ExperimentTracker:
                 name=name,
                 config=config,
                 tags=list(tags),
+                group=group,
                 mode=mode,
-                settings=wandb.Settings(start_method="thread"),
             )
             self.mode_effective = "online" if not self.run.settings._offline else "offline"
         except Exception as exc:  # pragma: no cover - network/environment dependent

@@ -39,6 +39,7 @@ def main(args: Args) -> None:
         name=f"offline-{Path(args.checkpoint).parent.name}",
         config={**args.__dict__, **git_metadata(Path(__file__).resolve().parents[1]), "runtime": runtime_metadata()},
         tags=("offline-eval", args.split),
+        group=f"offline-{args.split}",
         mode=args.wandb_mode,
     )
     results = {}

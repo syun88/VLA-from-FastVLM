@@ -1,0 +1,57 @@
+dataset:
+  id: lerobot/metaworld_mt50
+  revision: a59f742d218c903328164257ecf180f9b18018a1
+  tasks: [button-press-topdown-v3, push-v3, reach-v3]
+  split: {train: 35, validation: 7, test: 8, seed: 20261101}
+  frame_stride: 2
+  action_horizon: 8
+  control_hz: 80
+
+base_model:
+  id: apple/FastVLM-0.5B
+  revision: 16375720c2d673fa583e57e9876afde27549c7d0
+  local_mlx_checkpoint: /Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx
+
+seeds: [42, 43, 44]
+
+conditions:
+  - name: state-only
+    backbone_mode: state_only
+    use_state: true
+    use_global_feature: false
+    use_spatial_features: false
+    tags: [state-only, baseline]
+  - name: fastvithd-spatial
+    backbone_mode: vision_only
+    use_state: false
+    use_global_feature: false
+    use_spatial_features: true
+    tags: [fastvithd, spatial, baseline]
+  - name: fastvlm-frozen-global-spatial
+    backbone_mode: frozen
+    use_state: true
+    use_global_feature: true
+    use_spatial_features: true
+    tags: [fastvlm-frozen, primary]
+  - name: fastvlm-frozen-global-only
+    backbone_mode: frozen
+    use_state: true
+    use_global_feature: true
+    use_spatial_features: false
+    tags: [fastvlm-frozen, spatial-ablation]
+  - name: fastvlm-lora
+    backbone_mode: lora
+    use_state: true
+    use_global_feature: true
+    use_spatial_features: true
+    lora_rank: 8
+    lora_alpha: 16.0
+    max_steps: 2000
+    tags: [fastvlm-lora, adaptation]
+
+evaluation:
+  nominal_episodes_per_task: 50
+  generalization_seed_start: 200000
+  counterfactual_episodes_per_task: 20
+  replan_steps: 8
+  max_steps: 500

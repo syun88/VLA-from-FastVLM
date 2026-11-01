@@ -1,0 +1,152 @@
+{
+  "checkpoint": "/Volumes/data/checkpoints/fastvla/pilots/pilot-button-fastvithd-seed42-seed42/final",
+  "tasks": [
+    "button-press-topdown-v3"
+  ],
+  "episodes_per_task": 10,
+  "total_episodes": 10,
+  "successes": 10,
+  "success_rate": 1.0,
+  "counterfactual": false,
+  "task_results": {
+    "button-press-topdown-v3": [
+      {
+        "task": "button-press-topdown-v3",
+        "instruction": "Press a button from the top",
+        "episode": 0,
+        "seed": 200000,
+        "success": true,
+        "failure_reason": null,
+        "steps": 66,
+        "initial_manipulation_error": 0.4847587704599155,
+        "final_manipulation_error": 0.0702567873825588,
+        "action_stability_l1": 0.29013553261756897,
+        "counterfactual": false
+      },
+      {
+        "task": "button-press-topdown-v3",
+        "instruction": "Press a button from the top",
+        "episode": 1,
+        "seed": 200001,
+        "success": true,
+        "failure_reason": null,
+        "steps": 56,
+        "initial_manipulation_error": 0.4048172436689209,
+        "final_manipulation_error": 0.07265918935616708,
+        "action_stability_l1": 0.2496577352285385,
+        "counterfactual": false
+      },
+      {
+        "task": "button-press-topdown-v3",
+        "instruction": "Press a button from the top",
+        "episode": 2,
+        "seed": 200002,
+        "success": true,
+        "failure_reason": null,
+        "steps": 60,
+        "initial_manipulation_error": 0.42404293223020423,
+        "final_manipulation_error": 0.06889666230209883,
+        "action_stability_l1": 0.29424697160720825,
+        "counterfactual": false
+      },
+      {
+        "task": "button-press-topdown-v3",
+        "instruction": "Press a button from the top",
+        "episode": 3,
+        "seed": 200003,
+        "success": true,
+        "failure_reason": null,
+        "steps": 67,
+        "initial_manipulation_error": 0.47734234906533723,
+        "final_manipulation_error": 0.06862697908420803,
+        "action_stability_l1": 0.24763138592243195,
+        "counterfactual": false
+      },
+      {
+        "task": "button-press-topdown-v3",
+        "instruction": "Press a button from the top",
+        "episode": 4,
+        "seed": 200004,
+        "success": true,
+        "failure_reason": null,
+        "steps": 60,
+        "initial_manipulation_error": 0.4305124104850381,
+        "final_manipulation_error": 0.07127015122584598,
+        "action_stability_l1": 0.24952571094036102,
+        "counterfactual": false
+      },
+      {
+        "task": "button-press-topdown-v3",
+        "instruction": "Press a button from the top",
+        "episode": 5,
+        "seed": 200005,
+        "success": true,
+        "failure_reason": null,
+        "steps": 65,
+        "initial_manipulation_error": 0.4530785313204968,
+        "final_manipulation_error": 0.07232086330982444,
+        "action_stability_l1": 0.25776198506355286,
+        "counterfactual": false
+      },
+      {
+        "task": "button-press-topdown-v3",
+        "instruction": "Press a button from the top",
+        "episode": 6,
+        "seed": 200006,
+        "success": true,
+        "failure_reason": null,
+        "steps": 61,
+        "initial_manipulation_error": 0.4270635908776494,
+        "final_manipulation_error": 0.06640123148742069,
+        "action_stability_l1": 0.28525155782699585,
+        "counterfactual": false
+      },
+      {
+        "task": "button-press-topdown-v3",
+        "instruction": "Press a button from the top",
+        "episode": 7,
+        "seed": 200007,
+        "success": true,
+        "failure_reason": null,
+        "steps": 66,
+        "initial_manipulation_error": 0.49325005739417754,
+        "final_manipulation_error": 0.072038590512299,
+        "action_stability_l1": 0.2584046721458435,
+        "counterfactual": false
+      },
+      {
+        "task": "button-press-topdown-v3",
+        "instruction": "Press a button from the top",
+        "episode": 8,
+        "seed": 200008,
+        "success": true,
+        "failure_reason": null,
+        "steps": 62,
+        "initial_manipulation_error": 0.4437210951434702,
+        "final_manipulation_error": 0.06989142347715431,
+        "action_stability_l1": 0.2548370957374573,
+        "counterfactual": false
+      },
+      {
+        "task": "button-press-topdown-v3",
+        "instruction": "Press a button from the top",
+        "episode": 9,
+        "seed": 200009,
+        "success": true,
+        "failure_reason": null,
+        "steps": 69,
+        "initial_manipulation_error": 0.5042374553945516,
+        "final_manipulation_error": 0.06806183221620421,
+        "action_stability_l1": 0.2852883040904999,
+        "counterfactual": false
+      }
+    ]
+  },
+  "wandb_project": "fastvlm-vla-research",
+  "wandb_run_id": "7fxsmd2b",
+  "wandb_url": "https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/7fxsmd2b",
+  "wandb_mode_requested": "online",
+  "wandb_mode_effective": "online",
+  "wandb_error": null,
+  "tracked_at_unix": 1793510719.404031
+}
