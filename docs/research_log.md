@@ -57,3 +57,27 @@ establish a task-suite, multi-seed, language-grounding, or efficiency conclusion
 manifests and per-episode records are under `results/pilot/button-press-topdown-v3/`.
 
 The combined three-task cache is still in progress at this log update.
+
+### Three-task training update
+
+The combined cache completed with 1,659 button, 6,228 push, and 1,188 reach samples after
+stride-2 filtering. All confirmatory conditions use 5,000 optimizer updates with one sample per
+update. State-only, FastViTHD-only, FastVLM global-only, frozen FastVLM, and frozen FastVLM
+seed 42/43/44 checkpoints were produced. Best checkpoints are selected on the validation split.
+
+State-only closed-loop evaluation completed with 50 test episodes per task and three seeds:
+
+| Seed | Button | Push | Reach | Pooled success | W&B |
+| ---: | ---: | ---: | ---: | ---: | --- |
+| 42 | 0/50 | 0/50 | 11/50 | 7.33% | `4ntj2rrr` |
+| 43 | 0/50 | 0/50 | 12/50 | 8.00% | `e4ar37u5` |
+| 44 | 0/50 | 0/50 | 11/50 | 7.33% | `t5utyh8z` |
+
+The FastVLM LoRA seed-42 run completed 5,000 updates with 5,654,184 trainable parameters. A
+dedicated one-step check showed a nonzero gradient and a changed adapter norm, and the saved
+adapter was materially changed after training. Its validation normalized MSE was 0.4902 versus
+0.4236 for frozen FastVLM seed 42 in this low-data budget. The 50-episode LoRA closed-loop run
+was still executing when this log was last updated; no LoRA success claim is made yet.
+
+Offline held-out results for the completed cached-feature conditions were recorded under
+`results/offline/`; all are test-split action errors and not substitutes for closed-loop success.
