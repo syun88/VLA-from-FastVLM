@@ -4,10 +4,16 @@
 
 | Version | Status |
 | --- | --- |
-| `v0.1.0-alpha` | Supported for security reports |
+| `v0.2.0-alpha` | Supported for security reports |
+| `v0.1.0-alpha` | Legacy PyTorch workflow; security fixes are limited to critical issues |
 
 This project is currently alpha software. The code is intended for research
 workflows and should not be treated as a certified robotics safety system.
+
+Model loading uses upstream MLX-VLM/Transformers code and optional remote model repositories.
+Treat community checkpoints and remote code as untrusted, pin revisions, and run them with the
+least filesystem/network access available in your environment. Never place Hugging Face or W&B
+tokens in source files, result files, notebook outputs, or workflow YAML.
 
 ## Reporting a vulnerability
 
