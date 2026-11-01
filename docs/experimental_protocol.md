@@ -65,7 +65,9 @@ fixed, disjoint initial-state seed ranges and reports Wilson 95% intervals for s
 Training seeds are treated as independent replicates; no seed is selected based on test
 performance.
 
-Final target is 50 episodes per task per seed when runtime permits. Any reduction is recorded
+Final target is 50 episodes per task per seed when runtime permits. Initial-state seeds beginning
+at 200000 were used for the 10-episode engineering pilot, so confirmatory evaluation uses a fresh
+range beginning at 300000. Any reduction is recorded
 with the exact episode count and reason. Interim or smoke runs are not reported as
 confirmatory evidence.
 

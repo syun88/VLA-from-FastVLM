@@ -1,0 +1,498 @@
+{
+  "checkpoint": "/Volumes/data/checkpoints/fastvla/runs/fastvithd-only-seed44/best",
+  "split": "test",
+  "tasks": {
+    "button-press-topdown-v3": {
+      "samples": 274,
+      "normalized_rmse": 0.35223621129989624,
+      "normalized_mae": 0.1706746220588684
+    },
+    "push-v3": {
+      "samples": 296,
+      "normalized_rmse": 0.7055627703666687,
+      "normalized_mae": 0.46243277192115784
+    },
+    "reach-v3": {
+      "samples": 185,
+      "normalized_rmse": 0.46437111496925354,
+      "normalized_mae": 0.2986220419406891
+    }
+  },
+  "mean_normalized_rmse": 0.5073900322119395,
+  "checkpoint_metadata": {
+    "git_sha": "671d35cb8a89b64303e27052eec481dcaf660321",
+    "git_branch": "research/mlx-fastvla",
+    "git_dirty": "true",
+    "platform": "macOS-27.2-arm64-arm-64bit",
+    "machine": "arm64",
+    "python": "3.12.11",
+    "packages": {
+      "mlx": "0.31.1",
+      "mlx-vlm": "0.4.4",
+      "mlx-lm": "0.31.2",
+      "numpy": "2.2.6",
+      "wandb": "0.24.2",
+      "metaworld": "3.1.1",
+      "mujoco": "3.3.0"
+    },
+    "device": "Device(gpu, 0)",
+    "policy": {
+      "base_model": "apple/FastVLM-0.5B",
+      "base_model_path": "/Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx",
+      "base_revision": "16375720c2d673fa583e57e9876afde27549c7d0",
+      "backbone_family": "fastvlm",
+      "backbone_mode": "vision_only",
+      "action_horizon": 8,
+      "state_dim": 4,
+      "action_dim": 4,
+      "head_hidden_dim": 512,
+      "visual_hidden_size": 896,
+      "state_hidden_dim": 64,
+      "spatial_grid": 4,
+      "spatial_token_dim": 64,
+      "use_global_feature": false,
+      "use_spatial_features": true,
+      "use_state": false,
+      "dropout": 0.0,
+      "lora_rank": 8,
+      "lora_alpha": 16.0,
+      "lora_dropout": 0.05,
+      "image_longest_edge": 1024,
+      "max_text_tokens": 64,
+      "max_sequence_tokens": 512,
+      "action_space": "metaworld_delta_xyz_gripper",
+      "camera_names": [
+        "primary"
+      ],
+      "action_names": [
+        "dx",
+        "dy",
+        "dz",
+        "gripper"
+      ],
+      "state_names": [
+        "gripper_x",
+        "gripper_y",
+        "gripper_z",
+        "gripper_open"
+      ]
+    },
+    "training": {
+      "run_name": "fastvithd-only",
+      "output_dir": "/Volumes/data/checkpoints/fastvla/runs",
+      "cache_root": "/Volumes/data/dataset/fastvla/features",
+      "seed": 44,
+      "epochs": 40,
+      "max_steps": 5000,
+      "batch_size": 1,
+      "gradient_accumulation_steps": 1,
+      "learning_rate": 0.0003,
+      "lora_learning_rate": 0.0001,
+      "weight_decay": 0.0001,
+      "warmup_ratio": 0.05,
+      "grad_clip_norm": 1.0,
+      "log_every": 10,
+      "eval_every_epochs": 2,
+      "save_every_epochs": 10,
+      "wandb_project": "fastvlm-vla-research",
+      "wandb_group": "fastvithd-only",
+      "wandb_mode": "online",
+      "wandb_tags": [
+        "vision_only",
+        "seed-44"
+      ]
+    },
+    "epoch": 0,
+    "global_step": 4281,
+    "optimizer_steps": 4281,
+    "trainable_parameter_count": 861280,
+    "dataset": {
+      "tasks": {
+        "button-press-topdown-v3": {
+          "samples": 1659,
+          "instruction": "Press a button from the top",
+          "manifest": {
+            "format_version": 1,
+            "task_name": "button-press-topdown-v3",
+            "instruction": "Press a button from the top",
+            "samples": 1659,
+            "state_dim": 4,
+            "action_dim": 4,
+            "action_horizon": 8,
+            "frame_stride": 2,
+            "image_longest_edge": 1024,
+            "image_token_position": 14,
+            "has_visual": true,
+            "base_model": "apple/FastVLM-0.5B",
+            "base_model_path": "/Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx",
+            "base_revision": "16375720c2d673fa583e57e9876afde27549c7d0",
+            "dataset_id": "lerobot/metaworld_mt50",
+            "dataset_revision": "a59f742d218c903328164257ecf180f9b18018a1",
+            "split": {
+              "train": [
+                215,
+                229,
+                236,
+                219,
+                223,
+                242,
+                243,
+                224,
+                200,
+                244,
+                222,
+                201,
+                240,
+                212,
+                248,
+                231,
+                216,
+                213,
+                234,
+                218,
+                221,
+                208,
+                209,
+                202,
+                214,
+                220,
+                232,
+                211,
+                238,
+                246,
+                249,
+                227,
+                247,
+                206,
+                241
+              ],
+              "validation": [
+                205,
+                230,
+                233,
+                217,
+                228,
+                203,
+                239
+              ],
+              "test": [
+                237,
+                245,
+                225,
+                226,
+                204,
+                207,
+                210,
+                235
+              ]
+            },
+            "latency_summary": {
+              "p50_seconds": 0.3385496735572815,
+              "p95_seconds": 0.3970555067062378
+            },
+            "git_sha": "0409f0e3801c13953026d80921c4adb3e98a5487",
+            "git_branch": "research/mlx-fastvla",
+            "git_dirty": "true",
+            "wandb_project": "fastvlm-vla-research",
+            "wandb_run_id": "pq1rhmxv",
+            "wandb_url": "https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/pq1rhmxv",
+            "wandb_mode_requested": "online",
+            "wandb_mode_effective": "online",
+            "wandb_error": null,
+            "tracked_at_unix": 1793510403.872085
+          },
+          "normalization": {
+            "state_mean": [
+              0.00918140634894371,
+              0.666210949420929,
+              0.35045325756073,
+              0.3810819685459137
+            ],
+            "state_std": [
+              0.0550144761800766,
+              0.15282072126865387,
+              0.0698566660284996,
+              0.1974446326494217
+            ],
+            "action_mean": [
+              0.019122222438454628,
+              4.193459510803223,
+              0.493536114692688,
+              0.9465998411178589
+            ],
+            "action_std": [
+              0.32211825251579285,
+              3.678009033203125,
+              1.9555668830871582,
+              0.22483894228935242
+            ],
+            "state_dim": 4,
+            "action_dim": 4,
+            "train_episodes": 35
+          }
+        },
+        "push-v3": {
+          "samples": 6228,
+          "instruction": "Push the puck to a goal",
+          "manifest": {
+            "format_version": 1,
+            "task_name": "push-v3",
+            "instruction": "Push the puck to a goal",
+            "samples": 6228,
+            "state_dim": 4,
+            "action_dim": 4,
+            "action_horizon": 8,
+            "frame_stride": 2,
+            "image_longest_edge": 1024,
+            "image_token_position": 14,
+            "has_visual": true,
+            "base_model": "apple/FastVLM-0.5B",
+            "base_model_path": "/Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx",
+            "base_revision": "16375720c2d673fa583e57e9876afde27549c7d0",
+            "dataset_id": "lerobot/metaworld_mt50",
+            "dataset_revision": "a59f742d218c903328164257ecf180f9b18018a1",
+            "split": {
+              "train": [
+                2039,
+                2008,
+                2037,
+                2018,
+                2035,
+                2012,
+                2001,
+                2127,
+                2021,
+                2133,
+                2034,
+                2143,
+                2004,
+                2010,
+                2129,
+                2031,
+                2027,
+                2013,
+                2120,
+                2105,
+                2130,
+                2023,
+                2123,
+                2036,
+                2002,
+                2014,
+                2108,
+                2101,
+                2119,
+                2104,
+                2046,
+                2115,
+                2136,
+                2029,
+                2138
+              ],
+              "validation": [
+                2022,
+                2038,
+                2047,
+                2114,
+                2041,
+                2106,
+                2016
+              ],
+              "test": [
+                2009,
+                2126,
+                2000,
+                2141,
+                2100,
+                2019,
+                2134,
+                2032
+              ]
+            },
+            "latency_summary": {
+              "p50_seconds": 0.34184497594833374,
+              "p95_seconds": 0.42476603388786316
+            },
+            "git_sha": "b6b81aa84225a054455fdb99cfe3e79b1042a912",
+            "git_branch": "research/mlx-fastvla",
+            "git_dirty": "true",
+            "wandb_project": "fastvlm-vla-research",
+            "wandb_run_id": "9xviempt",
+            "wandb_url": "https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/9xviempt",
+            "wandb_mode_requested": "online",
+            "wandb_mode_effective": "online",
+            "wandb_error": null,
+            "tracked_at_unix": 1793512798.152041
+          },
+          "normalization": {
+            "state_mean": [
+              0.011350580491125584,
+              0.7552236318588257,
+              0.12100505083799362,
+              0.7150368690490723
+            ],
+            "state_std": [
+              0.053122177720069885,
+              0.07310206443071365,
+              0.07406189292669296,
+              0.22187207639217377
+            ],
+            "action_mean": [
+              -0.007957298308610916,
+              0.1549864560365677,
+              -0.5376425981521606,
+              0.14606861770153046
+            ],
+            "action_std": [
+              0.2797459661960602,
+              0.7205098867416382,
+              0.7798197865486145,
+              0.28985723853111267
+            ],
+            "state_dim": 4,
+            "action_dim": 4,
+            "train_episodes": 35
+          }
+        },
+        "reach-v3": {
+          "samples": 1188,
+          "instruction": "Reach a goal position",
+          "manifest": {
+            "format_version": 1,
+            "task_name": "reach-v3",
+            "instruction": "Reach a goal position",
+            "samples": 1188,
+            "state_dim": 4,
+            "action_dim": 4,
+            "action_horizon": 8,
+            "frame_stride": 2,
+            "image_longest_edge": 1024,
+            "image_token_position": 14,
+            "has_visual": true,
+            "base_model": "apple/FastVLM-0.5B",
+            "base_model_path": "/Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx",
+            "base_revision": "16375720c2d673fa583e57e9876afde27549c7d0",
+            "dataset_id": "lerobot/metaworld_mt50",
+            "dataset_revision": "a59f742d218c903328164257ecf180f9b18018a1",
+            "split": {
+              "train": [
+                2165,
+                2179,
+                2186,
+                2169,
+                2173,
+                2192,
+                2193,
+                2174,
+                2150,
+                2194,
+                2172,
+                2151,
+                2190,
+                2162,
+                2198,
+                2181,
+                2166,
+                2163,
+                2184,
+                2168,
+                2171,
+                2158,
+                2159,
+                2152,
+                2164,
+                2170,
+                2182,
+                2161,
+                2188,
+                2196,
+                2199,
+                2177,
+                2197,
+                2156,
+                2191
+              ],
+              "validation": [
+                2155,
+                2180,
+                2183,
+                2167,
+                2178,
+                2153,
+                2189
+              ],
+              "test": [
+                2187,
+                2195,
+                2175,
+                2176,
+                2154,
+                2157,
+                2160,
+                2185
+              ]
+            },
+            "latency_summary": {
+              "p50_seconds": 0.33504384756088257,
+              "p95_seconds": 0.34647053480148315
+            },
+            "git_sha": "671d35cb8a89b64303e27052eec481dcaf660321",
+            "git_branch": "research/mlx-fastvla",
+            "git_dirty": "true",
+            "wandb_project": "fastvlm-vla-research",
+            "wandb_run_id": "t1htwtfx",
+            "wandb_url": "https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/t1htwtfx",
+            "wandb_mode_requested": "online",
+            "wandb_mode_effective": "online",
+            "wandb_error": null,
+            "tracked_at_unix": 1793513234.85762
+          },
+          "normalization": {
+            "state_mean": [
+              0.011378315277397633,
+              0.7402082681655884,
+              0.1963290125131607,
+              0.997503399848938
+            ],
+            "state_std": [
+              0.04409466311335564,
+              0.07611877471208572,
+              0.05201874300837517,
+              0.001165876630693674
+            ],
+            "action_mean": [
+              0.01408154796808958,
+              0.4829142391681671,
+              -0.04810746759176254,
+              0.0
+            ],
+            "action_std": [
+              0.1381174474954605,
+              0.3463859558105469,
+              0.17447835206985474,
+              9.999999974752427e-07
+            ],
+            "state_dim": 4,
+            "action_dim": 4,
+            "train_episodes": 35
+          }
+        }
+      }
+    },
+    "wandb_project": "fastvlm-vla-research",
+    "wandb_run_id": "prko1edu",
+    "wandb_url": "https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/prko1edu",
+    "wandb_mode_requested": "online",
+    "wandb_mode_effective": "online",
+    "wandb_error": null,
+    "tracked_at_unix": 1793514115.961596
+  },
+  "wandb_project": "fastvlm-vla-research",
+  "wandb_run_id": "xi53awjv",
+  "wandb_url": "https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/xi53awjv",
+  "wandb_mode_requested": "offline",
+  "wandb_mode_effective": "offline",
+  "wandb_error": null,
+  "tracked_at_unix": 1793514638.8687098,
+  "wandb_synced_from_offline": true
+}

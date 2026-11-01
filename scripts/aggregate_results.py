@@ -172,6 +172,7 @@ def main(args: Args) -> None:
                     "condition": condition_name(metadata),
                     "seed": metadata.get("training", {}).get("seed"),
                     "resolution": int(resolution),
+                    "visual_token_count": result.get("visual_token_count"),
                     "cold_load_seconds": result["cold_load_seconds"],
                     "end_to_end_p50_ms": result["stages"]["end_to_end_seconds"]["p50_ms"],
                     "end_to_end_p95_ms": result["stages"]["end_to_end_seconds"]["p95_ms"],

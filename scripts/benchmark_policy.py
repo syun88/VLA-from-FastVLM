@@ -79,6 +79,10 @@ def main(args: Args) -> None:
                 )
                 policy.backbone.processor.image_processor.size = {"shortest_edge": resolution}
                 policy.config.image_longest_edge = resolution
+            visual_token_count = None
+            if policy.config.uses_vlm:
+                feature_probe = policy.backbone.encode(image, instruction)
+                visual_token_count = int(feature_probe.visual_tokens.shape[0])
             for _ in range(args.warmup):
                 policy.predict_chunk(image, state, instruction)
             timings = []
@@ -106,6 +110,7 @@ def main(args: Args) -> None:
                 "resolution": resolution,
                 "cold_load_seconds": cold_load_seconds,
                 "action_chunk_size": chunk_size,
+                "visual_token_count": visual_token_count,
                 "amortized_action_ms": stage_stats["end_to_end_seconds"]["p50_ms"] / max(1, chunk_size or 1),
                 "stages": stage_stats,
                 **{f"memory/{key}": value for key, value in mlx_memory_stats().items()},
@@ -117,6 +122,7 @@ def main(args: Args) -> None:
                     f"benchmark/{resolution}/end_to_end_p50_ms": stage_stats["end_to_end_seconds"]["p50_ms"],
                     f"benchmark/{resolution}/end_to_end_p95_ms": stage_stats["end_to_end_seconds"]["p95_ms"],
                     f"benchmark/{resolution}/amortized_action_ms": result["amortized_action_ms"],
+                    f"benchmark/{resolution}/visual_token_count": visual_token_count,
                     **{f"benchmark/{resolution}/memory/{key}": value for key, value in mlx_memory_stats().items()},
                 }
             )

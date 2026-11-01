@@ -213,6 +213,8 @@ class CachedActionTrainer:
         validation_by_task: dict[str, np.ndarray],
     ) -> tuple[MLXFastVLAPolicy, ExperimentTracker]:
         cfg = self.train_config
+        if len(train_indices) == 0:
+            raise ValueError("Training split is empty; check cache episode manifests")
         rng = np.random.default_rng(cfg.seed)
         steps_per_epoch = max(1, math.ceil(len(train_indices) / cfg.batch_size))
         total_steps = cfg.max_steps or steps_per_epoch * cfg.epochs
@@ -483,6 +485,8 @@ class LoRAActionTrainer:
         validation_by_task: dict[str, np.ndarray],
     ) -> tuple[MLXFastVLAPolicy, ExperimentTracker]:
         cfg = self.train_config
+        if len(train_indices) == 0:
+            raise ValueError("Training split is empty; check cache episode manifests")
         rng = np.random.default_rng(cfg.seed)
         total_steps = cfg.max_steps or cfg.epochs * len(train_indices)
         provenance = git_metadata(Path(__file__).resolve().parents[3])

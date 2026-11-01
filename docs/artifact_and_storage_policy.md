@@ -21,6 +21,12 @@ the data are replicated by the GitHub/Hugging Face source revisions, and interme
 can be regenerated. A private bucket would add upload, recovery, privacy, and possible quota or
 pricing considerations without a demonstrated current benefit.
 
+Hub documentation checked on 2026-11-01 states a free-account private-storage allowance of
+100 GB; paid plans include larger allowances and list $18/TB/month private and $12/TB/month
+public base pricing. The planned private research artifacts are about 5–10 GB and fit the free
+private allowance in principle. The account's currently consumed quota was not queried with a
+billing action, and no purchase or upgrade was made.
+
 The decision can be revisited only if measured local usage approaches capacity or a concrete
 remote-recovery requirement appears. No paid plan, storage upgrade, or charge is authorized.
 

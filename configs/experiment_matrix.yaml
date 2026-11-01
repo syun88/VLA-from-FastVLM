@@ -55,7 +55,7 @@ conditions:
 
 evaluation:
   nominal_episodes_per_task: 50
-  generalization_seed_start: 200000
+  generalization_seed_start: 300000
   counterfactual_episodes_per_task: 20
   replan_steps: 8
   max_steps: 500

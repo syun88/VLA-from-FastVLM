@@ -40,7 +40,7 @@ def main(args: Args) -> None:
         r"\begin{table}[h]",
         r"\centering",
         r"\small",
-        r"\begin{tabular}{llrrrr}",
+        r"\begin{tabular}{llrrrrr}",
         r"\toprule",
         r"Condition & Task & Seeds & Episodes & Success & Wilson 95\% \\",
         r"\midrule",
@@ -61,12 +61,12 @@ def main(args: Args) -> None:
         r"\small",
         r"\begin{tabular}{llrrrr}",
         r"\toprule",
-        r"Condition & Resolution & Cold load (s) & Chunk p50 (ms) & Chunk p95 (ms) & Peak MLX (GB) \\",
+        r"Condition & Resolution & Visual tokens & Cold load (s) & Chunk p50 (ms) & Chunk p95 (ms) & Peak MLX (GB) \\",
         r"\midrule",
     ]
     for row in latency_rows:
         efficiency_table.append(
-            f"{_tex(row['condition'])} & {row['resolution']} & {float(row['cold_load_seconds']):.2f} & "
+            f"{_tex(row['condition'])} & {row['resolution']} & {row.get('visual_token_count', '--')} & {float(row['cold_load_seconds']):.2f} & "
             f"{float(row['end_to_end_p50_ms']):.1f} & {float(row['end_to_end_p95_ms']):.1f} & "
             f"{float(row['peak_gb']):.2f} \\\\"
         )

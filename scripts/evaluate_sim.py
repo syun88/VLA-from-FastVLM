@@ -19,7 +19,7 @@ class Args:
     episodes: int = 50
     replan_steps: int = 8
     max_steps: int = 500
-    seed_start: int = 200000
+    seed_start: int = 300000
     output_root: str = "/Volumes/data/checkpoints/fastvla/evals"
     run_name: str = "fastvla-closed-loop"
     group: str = "fastvla-confirmatory"
@@ -85,7 +85,13 @@ def main(args: Args) -> None:
                 "eval/overall/episodes": summary["total_episodes"],
             }
         )
-        tracker.summary(summary)
+        tracker.summary(
+            {
+                key: value
+                for key, value in summary.items()
+                if key != "task_results" and isinstance(value, (int, float, str, bool))
+            }
+        )
     finally:
         tracker.finish()
     if summary is None:

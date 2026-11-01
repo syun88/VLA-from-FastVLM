@@ -30,7 +30,10 @@ def main(args: Args) -> None:
     dataset = MultiTaskCache.from_cache_root(args.cache_root, tasks)
     checkpoint = Path(args.checkpoint)
     metadata = json.loads((checkpoint / "metadata.json").read_text(encoding="utf-8"))
-    policy = MLXFastVLAPolicy.load(checkpoint, load_backbone=True)
+    checkpoint_config = json.loads((checkpoint / "config.json").read_text(encoding="utf-8"))
+    policy = MLXFastVLAPolicy.load(
+        checkpoint, load_backbone=checkpoint_config.get("backbone_mode") == "lora"
+    )
     if policy.action_policy is None:
         raise RuntimeError("Checkpoint action head did not load")
     policy.action_policy.eval()
