@@ -76,6 +76,10 @@ Frozen FastVLM seed 42 completed 50 fresh test episodes per task: 49/50 button, 
 10/50 reach, and 61/150 pooled. W&B run ID: `1mweq435`. This is one seed of the confirmatory
 comparison, not a cross-seed final result.
 
+Frozen FastVLM seed 43 completed the same protocol: 29/50 button, 2/50 push, 11/50 reach, and
+42/150 pooled (28.0%). W&B run ID: `nwv1lwcc`. The between-seed difference is material and is
+part of the reported uncertainty, not a result to average away silently.
+
 The FastVLM LoRA seed-42 run completed 5,000 updates with 5,654,184 trainable parameters. A
 dedicated one-step check showed a nonzero gradient and a changed adapter norm, and the saved
 adapter was materially changed after training. Its validation normalized MSE was 0.4902 versus
