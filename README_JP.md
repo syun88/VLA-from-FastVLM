@@ -242,7 +242,7 @@ CI で実行するもの:
 
 - `src`, `scripts`, `tests` の Ruff
 - Python source の compile
-- 11 個の unit test
+- 13 個の unit test（公開リポジトリの secret/path hygiene test を含む）
 - MLX の実 device と実計算
 - sdist / wheel build
 - `twine check`
