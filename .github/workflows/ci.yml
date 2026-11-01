@@ -4,16 +4,23 @@ on:
   push:
     branches: ["main", "research/mlx-fastvla"]
   pull_request:
-    branches: ["main"]
+    branches: ["main", "research/mlx-fastvla"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
 
 jobs:
   quality:
-    name: Apple Silicon Python ${{ matrix.python-version }}
-    runs-on: macos-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        python-version: ["3.12"]
+    name: MLX quality checks (Apple Silicon)
+    # The project imports mlx.core at package import time. Pin an ARM64 hosted
+    # image instead of relying on the OS version behind macos-latest.
+    runs-on: macos-15
+    timeout-minutes: 20
 
     steps:
       - name: Check out repository
@@ -22,14 +29,27 @@ jobs:
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: ${{ matrix.python-version }}
+          python-version: "3.12"
           cache: "pip"
 
-      - name: Install MLX research dependencies
+      - name: Install project and test dependencies
+        shell: bash
         run: |
-          python -m pip install --upgrade pip
-          python -m pip install build wheel
+          set -euo pipefail
+          python -m pip install --upgrade pip setuptools wheel
           python -m pip install -e '.[dev]'
+
+      - name: Verify native MLX runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import mlx.core as mx
+          print(f"MLX default device: {mx.default_device()}")
+          value = mx.sum(mx.array([1.0, 2.0, 3.0]))
+          mx.eval(value)
+          assert float(value.item()) == 6.0
+          PY
 
       - name: Lint
         run: python -m ruff check src scripts tests
@@ -40,5 +60,26 @@ jobs:
       - name: Run tests
         run: python -m pytest
 
-      - name: Build package artifacts
-        run: python -m build --sdist --wheel --no-isolation
+      - name: Build distributions
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install build twine
+          python -m build
+          python -m twine check dist/*
+
+      - name: Verify installed wheel
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m venv /tmp/vla-wheel-venv
+          /tmp/vla-wheel-venv/bin/python -m pip install --upgrade pip
+          /tmp/vla-wheel-venv/bin/python -m pip install dist/*.whl
+          /tmp/vla-wheel-venv/bin/python -c 'import vla_fastvlm; print(vla_fastvlm.__all__)'
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: vla-fastvlm-distributions
+          path: dist/
+          if-no-files-found: error
