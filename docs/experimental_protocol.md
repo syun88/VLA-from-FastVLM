@@ -38,6 +38,12 @@ condition must backpropagate through the language layers, while action-head cond
 cached features. Training time, samples/second, and memory are reported rather than hidden.
 Differences in pretrained history and architecture remain explicit limitations.
 
+The 5,000-update budget corresponds to 1.168 passes over the 4,281 stride-2 training windows and
+was chosen as an on-device engineering budget, not as a reproduction of SmolVLA or pi0.5 recipes.
+Every result must report optimizer steps, sampled windows, cache-pass equivalents, and dense-frame
+coverage separately. A longer equal-window comparison is required before drawing conclusions about
+the relative value of FastVLM or LoRA; see `docs/training_exposure_audit.md`.
+
 ## Metrics
 
 Offline test metrics are normalized action RMSE/MAE over valid chunk elements, separately by

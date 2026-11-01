@@ -1,0 +1,106 @@
+{
+  "schema_version": 1,
+  "audit_date": "2026-11-01",
+  "condition": "FastVLM-LoRA",
+  "seed": 42,
+  "checkpoint": {
+    "path": "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/fastvlm-lora-seed42/best",
+    "metadata_sha256": "67919bbf724667ec40ffa1c6197c5e5489839fe3af43336421147291a1c3ef75",
+    "adapter_sha256": "e85a402665e73be9a0a2965209b8175f4222d3abeab367eda208618a5c71aaa8b",
+    "action_head_sha256": "0e37f0ddbca473dc0f5212af8804f4c0087943230805a3bfcfa52812fa1fdc1d"
+  },
+  "provenance": {
+    "training_git_sha": "170216bdb726785d4ba7adda4e874eac0b14248c",
+    "wandb_run_id": "498nqciq",
+    "base_model": "apple/FastVLM-0.5B",
+    "base_revision": "16375720c2d673fa583e57e9876afde27549c7d0",
+    "dataset": "lerobot/metaworld_mt50",
+    "dataset_revision": "a59f742d218c903328164257ecf180f9b18018a1"
+  },
+  "model_scope": {
+    "backbone_mode": "lora",
+    "trainable_parameter_count": 5654184,
+    "vision_encoder_frozen": true,
+    "multimodal_projector_frozen": true,
+    "language_lora_trainable": true,
+    "action_head_trainable": true,
+    "lora_rank": 8,
+    "lora_alpha": 16.0
+  },
+  "optimization": {
+    "optimizer_steps": 5000,
+    "batch_size": 1,
+    "gradient_accumulation_steps": 1,
+    "sampled_windows": 5000,
+    "shuffle_seed": 42,
+    "frame_stride": 2,
+    "action_horizon": 8
+  },
+  "episode_coverage": {
+    "train_episodes": 105,
+    "episodes_processed_reported": 105,
+    "complete_episode_boundaries_respected": true,
+    "all_train_episodes_touched": true,
+    "all_cached_train_windows_touched": true,
+    "cached_pass_equivalent": 1.16795141322121,
+    "unique_dense_frame_coverage_fraction": 0.506326,
+    "sampled_window_to_dense_frame_ratio": 0.591226
+  },
+  "tasks": {
+    "button-press-topdown-v3": {
+      "train_episodes": 35,
+      "train_cache_windows_stride_2": 1155,
+      "reconstructed_full_frame_opportunities": 2275,
+      "optimizer_samples": 1354,
+      "cached_pass_equivalent": 1.172294
+    },
+    "push-v3": {
+      "train_episodes": 35,
+      "train_cache_windows_stride_2": 2299,
+      "reconstructed_full_frame_opportunities": 4563,
+      "optimizer_samples": 2681,
+      "cached_pass_equivalent": 1.166159
+    },
+    "reach-v3": {
+      "train_episodes": 35,
+      "train_cache_windows_stride_2": 827,
+      "reconstructed_full_frame_opportunities": 1619,
+      "optimizer_samples": 965,
+      "cached_pass_equivalent": 1.166868
+    }
+  },
+  "method_notes": {
+    "cache_pool_count": 9075,
+    "cache_pool_interpretation": "The 9075 manifest count is the full 50-episode cache pool per task, including validation, test, and unused episodes. It is not the optimizer's training exposure.",
+    "full_frame_reconstruction": "For each selected episode, max(frame_index) + 1 from the stride-2 cache; this estimates the all-frame opportunity count.",
+    "epoch_metric_warning": "The LoRA trainer logs schedule progress as train/epoch. The configured epochs=1 is not the number of passes over the training cache when max_steps is set."
+  },
+  "reference_protocols": {
+    "smolvla_lerobot_guide": {
+      "episodes": "about 50 per task, with 10 demonstrations at each of 5 variations",
+      "steps": 20000,
+      "batch_size": 64,
+      "sampled_windows": 1280000,
+      "source": "https://github.com/huggingface/lerobot/blob/main/docs/source/smolvla.mdx"
+    },
+    "smolvla_paper_simulation": {
+      "steps": 100000,
+      "batch_size": 64,
+      "sampled_windows": 6400000,
+      "trainable_scope": "action expert trained; VLM frozen",
+      "evaluation_trials_per_task": 10,
+      "source": "https://arxiv.org/abs/2506.01844"
+    },
+    "pi05_openpi_libero": {
+      "episodes": 1693,
+      "steps": 30000,
+      "batch_size": 256,
+      "sampled_windows": 7680000,
+      "trainable_scope": "full-parameter fine-tuning; no LoRA/freeze filter in pi05_libero",
+      "evaluation_trials_per_task": 50,
+      "replan_steps": 5,
+      "action_horizon": 10,
+      "source": "https://github.com/Physical-Intelligence/openpi"
+    }
+  }
+}

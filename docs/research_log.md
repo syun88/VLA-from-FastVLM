@@ -89,6 +89,24 @@ recomputes a policy action chunk. Three interactive random seeds were tried:
 (failure at 500 steps). This is a three-episode usability check, not a formal success-rate
 estimate; it exposes a clear fragility to object placement that the controlled evaluation needed.
 
+### Training-exposure audit
+
+The 9,075 manifest count for the three-task cache is the full 50-episode pool per task, including
+validation, test, and unused episodes. The actual LoRA training split contains 4,281 cached windows
+across 105 episodes. With 5,000 optimizer updates at batch size one, the optimizer completed 1.168
+passes over those cached windows: all 4,281 cached windows were visited once and 719 a second time.
+All training episodes were touched, but `frame_stride=2` means only every second frame was cached,
+so unique dense-frame coverage was approximately 50.6%. The LoRA `train/epoch` metric is schedule
+progress, not a count of cache passes.
+
+SmolVLA's official guide uses about 50 episodes per task, 20,000 steps at batch 64 (1.28 million
+sampled windows); its paper reports 100,000 steps at batch 64 for simulation fine-tuning. The
+pi0.5 openpi LIBERO example uses 1,693 episodes, 30,000 steps at batch 256 (7.68 million sampled
+windows), and 50 evaluation trials per task. The local 5,000-window run is therefore not a
+comparable training budget. The complete accounting and sources are in
+`docs/training_exposure_audit.md` and
+`manifests/training_exposure/fastvlm-lora-seed42.json`.
+
 The FastVLM LoRA seed-42 run completed 5,000 updates with 5,654,184 trainable parameters. A
 dedicated one-step check showed a nonzero gradient and a changed adapter norm, and the saved
 adapter was materially changed after training. Its validation normalized MSE was 0.4902 versus
