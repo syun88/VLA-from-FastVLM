@@ -102,6 +102,21 @@ python3 scripts/evaluate_sim.py \
   --episodes 50
 ```
 
+### Live on-device inference window
+
+```bash
+python3 scripts/live_demo.py \
+  --checkpoint "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/fastvlm-lora-seed42/best" \
+  --task button-press-topdown-v3 --seed 300001
+```
+
+This is a live MuJoCo rollout: every eight control steps the application feeds the current
+rendered RGB frame and state into the restored FastVLM-LoRA checkpoint, obtains a new action
+chunk, and steps the simulator. It is not a recorded replay. The panel reports inference time,
+chunk count, action values, and the native task success bit. The simulation is rendered at
+30 FPS, while policy inference takes roughly 0.4 s per eight-action chunk; it is therefore a
+live but compute-paced demonstration, not native 80-Hz real-time control.
+
 See [`docs/experimental_protocol.md`](docs/experimental_protocol.md) for comparisons and
 statistical rules, and [`docs/upstream_audit.md`](docs/upstream_audit.md) for exact revisions,
 local measurements, compatibility findings, and the model-license decision.

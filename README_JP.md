@@ -187,6 +187,20 @@ python3 scripts/evaluate_sim.py \
   --wandb-mode online
 ```
 
+### ライブ推論画面
+
+```bash
+python3 scripts/live_demo.py \
+  --checkpoint "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/fastvlm-lora-seed42/best" \
+  --task button-press-topdown-v3 --seed 300001
+```
+
+これは録画の再生ではありません。8 control step ごとに MuJoCo の現在の RGB frame と state を
+FastVLM-LoRA checkpoint に実際に入力し、返った action chunk でシミュレータを進めます。
+推論回数、推論時間、action、native success bit を画面に表示します。表示は 30 FPS ですが、
+8 action chunk の推論に約 0.4 秒かかるため、80 Hz の実時間制御ではなく compute-paced な
+ライブ demo です。
+
 Counterfactual instruction の評価では `--counterfactual` を追加します。環境 seed と episode 数を
 維持し、instruction だけを別 task の instruction に置き換えます。
 
