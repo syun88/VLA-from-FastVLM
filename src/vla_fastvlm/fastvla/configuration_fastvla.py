@@ -38,6 +38,7 @@ class FastVLAConfig:
     max_text_tokens: int = 64
     max_sequence_tokens: int = 512
     action_space: str = "joint_or_cartesian"
+    camera_names: tuple[str, ...] = ("primary",)
     action_names: tuple[str, ...] = ()
     state_names: tuple[str, ...] = ()
 
@@ -48,6 +49,8 @@ class FastVLAConfig:
             raise ValueError("state_dim must be positive when provided")
         if self.action_dim is not None and self.action_dim < 1:
             raise ValueError("action_dim must be positive when provided")
+        if not self.camera_names:
+            raise ValueError("camera_names must contain at least one camera")
         if self.use_state and self.state_dim is None:
             raise ValueError("use_state=True requires state_dim")
         if not self.use_global_feature and not self.use_spatial_features:
@@ -81,6 +84,8 @@ class FastVLAConfig:
             values = {**values, "action_names": tuple(values["action_names"])}
         if isinstance(values.get("state_names"), list):
             values = {**values, "state_names": tuple(values["state_names"])}
+        if isinstance(values.get("camera_names"), list):
+            values = {**values, "camera_names": tuple(values["camera_names"])}
         return cls(**values)
 
 

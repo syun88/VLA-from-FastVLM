@@ -18,8 +18,14 @@ from .configuration_fastvla import FastVLAConfig
 def _adaptive_grid_pool(tokens: mx.array, grid: int) -> mx.array:
     """Pool a square token grid to grid x grid with average pooling."""
 
-    if tokens.ndim != 3:
-        raise ValueError(f"Expected [B, N, D] tokens, got {tokens.shape}")
+    cameras = None
+    if tokens.ndim == 4:
+        batch, cameras, token_count, width = tokens.shape
+        tokens = tokens.reshape(batch * cameras, token_count, width)
+    elif tokens.ndim == 3:
+        pass
+    else:
+        raise ValueError(f"Expected [B, N, D] or [B, C, N, D] tokens, got {tokens.shape}")
     batch, token_count, width = tokens.shape
     side = int(round(math.sqrt(token_count)))
     if side * side != token_count:
@@ -28,7 +34,10 @@ def _adaptive_grid_pool(tokens: mx.array, grid: int) -> mx.array:
         raise ValueError(f"Grid {grid} does not evenly divide token side {side}")
     step = side // grid
     pooled = tokens.reshape(batch, grid, step, grid, step, width).mean(axis=(2, 4))
-    return pooled.reshape(batch, grid * grid, width)
+    pooled = pooled.reshape(batch, grid * grid, width)
+    if cameras is not None:
+        pooled = pooled.reshape(batch // cameras, cameras, grid * grid, width)
+    return pooled
 
 
 class ActionPolicy(nn.Module):
@@ -59,7 +68,12 @@ class ActionPolicy(nn.Module):
             self.spatial_projection = nn.Linear(
                 visual_hidden_size, config.spatial_token_dim
             )
-            fusion_dim += config.spatial_grid * config.spatial_grid * config.spatial_token_dim
+            fusion_dim += (
+                len(config.camera_names)
+                * config.spatial_grid
+                * config.spatial_grid
+                * config.spatial_token_dim
+            )
         if config.use_state:
             self.state_norm = nn.LayerNorm(config.state_dim)
             self.state_projection = nn.Sequential(
@@ -90,10 +104,15 @@ class ActionPolicy(nn.Module):
         if self.config.use_global_feature:
             if global_hidden is None:
                 raise ValueError("global_hidden is required by this policy")
-            pieces.append(self.global_projection(global_hidden))
+            if global_hidden.ndim == 2:
+                global_hidden = global_hidden[:, None, :]
+            projected_global = self.global_projection(global_hidden)
+            pieces.append(projected_global.mean(axis=1))
         if self.config.use_spatial_features:
             if visual_tokens is None:
                 raise ValueError("visual_tokens are required by this policy")
+            if visual_tokens.ndim == 3:
+                visual_tokens = visual_tokens[:, None, :, :]
             pooled = _adaptive_grid_pool(visual_tokens, self.config.spatial_grid)
             projected = self.spatial_projection(pooled)
             pieces.append(projected.reshape(projected.shape[0], -1))
@@ -149,7 +168,7 @@ class MLXFastVLAPolicy:
 
     def predict_chunk(
         self,
-        image: Image.Image | np.ndarray | None,
+        image: Image.Image | np.ndarray | dict[str, Image.Image | np.ndarray] | None,
         state: np.ndarray,
         instruction: str,
         *,
@@ -164,12 +183,35 @@ class MLXFastVLAPolicy:
         if self.config.uses_vlm and (visual_tokens is None or global_hidden is None):
             if image is None:
                 raise ValueError("An image is required for a FastVLM policy")
-            features = self.backbone.encode(image, instruction)
-            visual_tokens = features.visual_tokens
-            global_hidden = features.global_hidden
-            preprocessing_seconds = features.preprocessing_seconds
-            vision_seconds = features.vision_seconds
-            language_seconds = features.language_seconds
+            if isinstance(image, dict):
+                missing = set(self.config.camera_names).difference(image)
+                if missing:
+                    raise KeyError(f"Missing camera observations: {sorted(missing)}")
+                camera_features = [
+                    self.backbone.encode(image[name], instruction)
+                    for name in self.config.camera_names
+                ]
+                visual_tokens = np.stack(
+                    [features.visual_tokens for features in camera_features]
+                )
+                global_hidden = np.mean(
+                    np.stack([features.global_hidden for features in camera_features]),
+                    axis=0,
+                )
+                preprocessing_seconds = sum(
+                    features.preprocessing_seconds for features in camera_features
+                )
+                vision_seconds = sum(features.vision_seconds for features in camera_features)
+                language_seconds = sum(
+                    features.language_seconds for features in camera_features
+                )
+            else:
+                features = self.backbone.encode(image, instruction)
+                visual_tokens = features.visual_tokens
+                global_hidden = features.global_hidden
+                preprocessing_seconds = features.preprocessing_seconds
+                vision_seconds = features.vision_seconds
+                language_seconds = features.language_seconds
         head_start = time.perf_counter()
         state_batch = mx.array(state[None, :].astype(np.float32))
         visual_batch = (

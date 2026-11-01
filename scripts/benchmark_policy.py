@@ -8,6 +8,7 @@ import time
 from dataclasses import dataclass
 from pathlib import Path
 
+import mlx.core as mx
 import numpy as np
 import pyarrow.parquet as pq
 import tyro
@@ -67,6 +68,8 @@ def main(args: Args) -> None:
     results = {}
     try:
         for resolution in [int(value) for value in args.resolutions.split(",")]:
+            if hasattr(mx, "reset_peak_memory"):
+                mx.reset_peak_memory()
             cold_start = time.perf_counter()
             policy = MLXFastVLAPolicy.load(checkpoint, load_backbone=True)
             cold_load_seconds = time.perf_counter() - cold_start

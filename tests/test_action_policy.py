@@ -60,3 +60,25 @@ def test_checkpoint_roundtrip(tmp_path) -> None:
     restored = MLXFastVLAPolicy.load(tmp_path, load_backbone=False)
     assert restored.action_policy is not None
     assert restored.config.to_dict() == config.to_dict()
+
+
+def test_multi_camera_and_non_metaworld_action_dimensions() -> None:
+    config = FastVLAConfig(
+        backbone_mode="frozen",
+        camera_names=("wrist", "overhead"),
+        state_dim=14,
+        action_dim=7,
+        action_horizon=16,
+        head_hidden_dim=16,
+        visual_hidden_size=8,
+        spatial_grid=2,
+        spatial_token_dim=4,
+    )
+    policy = ActionPolicy(config, visual_hidden_size=8)
+    output = policy(
+        visual_tokens=mx.zeros((2, 2, 4, 8)),
+        global_hidden=mx.zeros((2, 2, 8)),
+        state=mx.zeros((2, 14)),
+    )
+
+    assert output.shape == (2, 16, 7)
