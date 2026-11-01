@@ -121,6 +121,14 @@ local measurements, compatibility findings, and the model-license decision.
   disclosure, and no-endorsement requirements.
 - W&B connectivity is best-effort; local result and checkpoint files remain authoritative.
 
+## Public repository hygiene
+
+Committed results retain run IDs and cryptographic checkpoint hashes for provenance, but omit
+W&B entity names, private run URLs, home-directory paths, and machine-specific mount paths. W&B
+access is resolved from the local authenticated session or `WANDB_ENTITY`. Run
+`python3 scripts/sanitize_public_results.py` before publishing new result files. The unit suite
+fails if private paths or named W&B run URLs reappear in tracked files.
+
 ## Repository layout
 
 ```text

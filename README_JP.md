@@ -278,6 +278,14 @@ Purposes、Apple endorsement がないことを明記します。
   resolution ablation、最終 paper は実行中または未完了です。
 - 未完了の測定値を推測値で埋めません。完了条件を満たすまでは結果を確定扱いしません。
 
+## 公開リポジトリの安全性
+
+公開する result には再現用の W&B run ID と checkpoint hash のみを含め、W&B entity 名、private
+run URL、home directory path、machine 固有 mount path は含めません。W&B entity は local の
+認証状態または `WANDB_ENTITY` から解決します。新しい result を公開する前に
+`python3 scripts/sanitize_public_results.py` を実行してください。追跡対象 file に private path や
+W&B entity 入り URL が再混入すると unit test が失敗します。
+
 ## License
 
 - この repository の source code: MIT (`LICENSE`)

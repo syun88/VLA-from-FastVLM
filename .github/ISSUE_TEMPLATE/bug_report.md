@@ -13,8 +13,8 @@ Describe the problem.
 ## Environment
 
 - Python version:
-- LeRobot version:
-- `transformers` version:
+- MLX version:
+- MLX-VLM / MLX-LM version:
 - `huggingface-hub` version:
 - OS / hardware:
 - Checkpoint source:
