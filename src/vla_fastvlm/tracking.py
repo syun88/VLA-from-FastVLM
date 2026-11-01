@@ -115,6 +115,16 @@ class ExperimentTracker:
         except Exception as exc:  # pragma: no cover
             self.start_error = f"summary failure: {type(exc).__name__}: {exc}"
 
+    def log_video(self, path: str | Path, *, key: str, caption: str) -> None:
+        if self.run is None:
+            return
+        try:
+            import wandb
+
+            self.run.log({key: wandb.Video(str(path), format="mp4", caption=caption)})
+        except Exception as exc:  # pragma: no cover - network/environment dependent
+            self.start_error = f"video failure: {type(exc).__name__}: {exc}"
+
     def finish(self) -> None:
         if self.run is None:
             return

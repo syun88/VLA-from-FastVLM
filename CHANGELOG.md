@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.2.0-alpha — MLX-native research branch
+
+### Added
+
+- Native MLX FastVLM backbone, action-chunk head, frozen feature cache, and real LoRA training.
+- Episode-disjoint Meta-World data adapter, action masking, per-task normalization, and checkpoints.
+- Closed-loop Meta-World evaluation, latency/memory benchmarking, W&B provenance, and license audit.
+- State-only, FastViTHD-only, global-only, frozen, LoRA, and SmolVLM comparison conditions.
+
 ## v0.1.0-alpha
 
 Initial alpha release for researchers evaluating FastVLM-backed VLA policies.

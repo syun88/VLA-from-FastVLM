@@ -25,6 +25,7 @@ class Args:
     group: str = "fastvla-confirmatory"
     counterfactual: bool = False
     save_videos: int = 3
+    image_resolution: int = 1024
     wandb_project: str = "fastvlm-vla-research"
     wandb_mode: str = "online"
 
@@ -62,6 +63,7 @@ def main(args: Args) -> None:
         group=args.group,
         mode=args.wandb_mode,
     )
+    summary = None
     try:
         summary = evaluate_policy(
             args.checkpoint,
@@ -74,6 +76,7 @@ def main(args: Args) -> None:
             tracker=tracker,
             counterfactual=args.counterfactual,
             save_videos=args.save_videos,
+            image_resolution=args.image_resolution,
         )
         tracker.log(
             {
@@ -85,6 +88,8 @@ def main(args: Args) -> None:
         tracker.summary(summary)
     finally:
         tracker.finish()
+    if summary is None:
+        raise RuntimeError("Closed-loop evaluation did not produce a summary")
     print(json.dumps({k: v for k, v in summary.items() if k != "task_results"}, indent=2))
     print(f"output={output}")
 

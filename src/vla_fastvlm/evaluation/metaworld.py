@@ -151,9 +151,12 @@ def evaluate_policy(
     tracker: ExperimentTracker,
     counterfactual: bool = False,
     save_videos: int = 3,
+    image_resolution: int = 1024,
     progress: Callable[[str], None] = print,
 ) -> dict[str, Any]:
     policy = MLXFastVLAPolicy.load(checkpoint_dir, load_backbone=True)
+    if policy.config.uses_vlm and hasattr(policy.backbone, "set_image_resolution"):
+        policy.backbone.set_image_resolution(image_resolution)
     metadata = json.loads((Path(checkpoint_dir) / "metadata.json").read_text(encoding="utf-8"))
     output = Path(output_dir)
     output.mkdir(parents=True, exist_ok=True)
@@ -178,6 +181,7 @@ def evaluate_policy(
             chunk_latencies: list[float] = []
             errors: list[float] = []
             stabilities: list[float] = []
+            replan_jumps: list[float] = []
             failures: dict[str, int] = {}
             videos_saved = 0
             try:
@@ -201,6 +205,10 @@ def evaluate_policy(
                             queue = list(chunk)
                             chunk_latencies.append(timing["end_to_end_seconds"])
                         action = np.asarray(queue.pop(0), dtype=np.float32)
+                        if step > 0 and step % replan_steps == 0:
+                            replan_jumps.append(
+                                float(np.linalg.norm(action - executed[-1]))
+                            )
                         image, state, terminated, truncated, info = env.step(action)
                         executed.append(action)
                         if save_videos and episode < save_videos:
@@ -257,6 +265,12 @@ def evaluate_policy(
                             output / "videos" / f"{task}-ep{episode}-{label}.mp4",
                             frames,
                         )
+                        if videos_saved == 0:
+                            tracker.log_video(
+                                output / "videos" / f"{task}-ep{episode}-{label}.mp4",
+                                key=f"rollout/{task}",
+                                caption=f"{task}: {label}; seed={seed}; instruction={instruction}",
+                            )
                         videos_saved += 1
                     if (episode + 1) % 10 == 0 or episode + 1 == episodes:
                         progress(
@@ -285,14 +299,25 @@ def evaluate_policy(
                 "failure_categories": failures,
                 "mean_final_manipulation_error": float(np.nanmean(errors)) if errors else None,
                 "mean_action_stability_l1": float(np.mean(stabilities)) if stabilities else None,
+                "mean_replan_action_jump_l1": float(np.mean(replan_jumps))
+                if replan_jumps
+                else None,
                 "latency_chunk_p50_seconds": float(np.percentile(chunk_latencies, 50)),
                 "latency_chunk_p95_seconds": float(np.percentile(chunk_latencies, 95)),
                 "latency_action_p50_seconds": float(np.percentile(latencies, 50)),
                 "latency_action_p95_seconds": float(np.percentile(latencies, 95)),
+                "effective_policy_update_frequency_hz": 1.0
+                / max(1e-9, float(np.percentile(chunk_latencies, 50))),
                 "replans_per_episode_estimate": max_steps / replan_steps,
                 "videos": videos_saved,
             }
-            tracker.log({f"eval/{task}/summary": task_summary})
+            tracker.log(
+                {
+                    f"eval/{task}/{key}": value
+                    for key, value in task_summary.items()
+                    if isinstance(value, (int, float)) and value is not None
+                }
+            )
     summary = {
         "checkpoint": str(checkpoint_dir),
         "tasks": tasks,
@@ -302,6 +327,7 @@ def evaluate_policy(
         "success_rate": sum(int(result["success"]) for result in all_results)
         / max(1, len(all_results)),
         "counterfactual": counterfactual,
+        "image_resolution": image_resolution,
         "task_results": {
             task: [result for result in all_results if result["task"] == task]
             for task in tasks

@@ -1,0 +1,96 @@
+\documentclass[10pt,letterpaper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{microtype}
+
+\title{FastVLM as a Robot Vision--Language--Action Backbone:\\ An MLX-Native On-Device Study}
+\author{Syun Robotics Lab}
+\date{Draft --- 2026-11-01}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+We study whether FastVLM's efficient high-resolution visual encoding remains useful after
+adaptation to robotic action prediction. We implement a fully MLX-native FastVLA system on an
+Apple M4 Mac and train an action-chunking policy over FastVLM representations, with frozen and
+language-LoRA variants. Controlled comparisons cover state-only, FastViTHD-only, global-only,
+FastVLM frozen, FastVLM LoRA, and a SmolVLM2-500M backbone on episode-disjoint Meta-World data.
+Evaluation measures native task success, manipulation error, action stability, instruction
+counterfactuals, latency, memory, and training efficiency. All reported experimental values and
+statistical claims are generated from the files under \texttt{results/confirmatory}; this draft
+must not be treated as complete until those placeholders are replaced by measured values.
+\end{abstract}
+
+\section{Introduction}
+Vision-language-action (VLA) policies combine pretrained visual-language representations with
+robot action decoding \cite{brohan2023rt2,kim2024openvla,oxe2023}. FastVLM targets efficient
+high-resolution vision-language inference by reducing visual tokens with FastViTHD
+\cite{fastvlm2025}. It is unclear whether that efficiency translates to manipulation, where
+small spatial errors and temporal action consistency matter more than text generation.
+
+We ask three questions. (1) Does a frozen FastVLM representation support accurate closed-loop
+control? (2) Does real MLX LoRA adaptation improve a controlled action head? (3) How do task
+success, latency, and memory compare with state-only, visual-token, and lightweight-VLM
+alternatives on the same demonstrations and simulator?
+
+\section{Related work}
+RT-2 and OpenVLA demonstrate large pretrained vision-language models as action policies
+\cite{brohan2023rt2,kim2024openvla}. ACT and diffusion policies show the importance of action
+chunking and temporal modeling \cite{zhao2023act,chi2023diffusion}. FastVLM instead focuses on
+reducing visual encoding cost while retaining high input resolution \cite{fastvlm2025}. LoRA
+provides a parameter-efficient adaptation mechanism \cite{hu2021lora}. Our study is deliberately
+small and controlled: it isolates the backbone and visual-token path while keeping the action
+head, data, action horizon, and simulator evaluation protocol fixed.
+
+\section{Method}
+\subsection{MLX-native multimodal policy}
+The FastVLM backbone performs its own 1024-pixel FastViTHD preprocessing, visual encoding,
+two-layer multimodal projection, and Qwen2 language processing in MLX. For an observation image
+$I_t$, instruction $L$, and proprioceptive state $s_t$, the model produces a final language hidden
+state $h_t$ and 256 projected FastViTHD tokens $V_t$. We average-pool $V_t$ from a $16\times16$
+grid to a $4\times4$ spatial summary, project each spatial token, and concatenate it with $h_t$
+and a projected normalized state. A two-layer MLP predicts an $H\times A$ action chunk.
+The action dimension, state dimension, camera list, names, and horizon are configuration fields;
+none are Meta-World constants in the core model.
+
+\subsection{Training variants}
+\paragraph{Frozen FastVLM.} The image tower, projector, and language model are frozen. Projected
+visual tokens and the final hidden state are cached from the actual Apple checkpoint. Only the
+action head is optimized with AdamW and masked action-chunk MSE.
+
+\paragraph{FastVLM LoRA.} Upstream MLX \texttt{LoRaLayer} modules replace Qwen2 attention and MLP
+projections. FastViTHD and the multimodal projector remain frozen, while the LoRA $A/B$ matrices
+and action head are optimized jointly with \texttt{mlx.value\_and\_grad}. We verify trainable
+parameter counts, nonzero gradients, and parameter changes before treating a run as LoRA.
+
+\subsection{Data and simulation}
+We use \texttt{lerobot/metaworld\_mt50} (Apache-2.0) and Meta-World v3 \cite{finn2019metaworld}.
+Episodes are split 35/7/8 per selected task with a fixed seed. Action targets are eight consecutive
+80-Hz actions with episode-boundary masks. State and action normalization use training episodes
+only. Closed-loop evaluation uses the benchmark's native success flag and a fresh seed range.
+
+\section{Experiments}
+\input{generated/results}
+
+\section{Discussion and limitations}
+This study is simulation-only and does not establish physical-robot performance. The three tasks
+do not cover all manipulation regimes, and the selected pretrained histories differ across
+backbones. FastViTHD and the projector remain frozen in cached-feature and LoRA conditions. We use
+three training seeds and pooled held-out episodes with Wilson intervals, but a negative or
+inconclusive result remains a valid scientific outcome. We do not claim State-of-the-Art
+performance.
+
+\section{Reproducibility, ethics, and licensing}
+The repository records split manifests, configurations, Git commits, W\&B run identifiers,
+checkpoint metadata, and runtime versions. Apple FastVLM weights are licensed under
+\texttt{apple-amlr} for non-commercial research. This work is an unofficial derivative and has no
+Apple endorsement. Dataset bytes are referenced under their original license rather than
+redistributed. No API credentials are committed.
+
+\bibliographystyle{plain}
+\bibliography{references}
+\end{document}

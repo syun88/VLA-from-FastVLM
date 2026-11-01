@@ -264,6 +264,15 @@ class FastVLMBackbone:
         }
         self.model.train()
 
+    def set_image_resolution(self, longest_edge: int) -> None:
+        if self.processor is None:
+            raise RuntimeError("FastVLM processor is not loaded")
+        self.config.image_longest_edge = int(longest_edge)
+        try:
+            self.processor.image_processor.size = {"shortest_edge": int(longest_edge)}
+        except Exception as exc:
+            raise RuntimeError("FastVLM image processor does not expose a mutable size") from exc
+
     def close(self) -> None:
         self.model = None
         self.processor = None
