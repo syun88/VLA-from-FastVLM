@@ -56,7 +56,7 @@ The pilot demonstrates a genuine MLX-trained checkpoint driving the simulator. I
 establish a task-suite, multi-seed, language-grounding, or efficiency conclusion. Result
 manifests and per-episode records are under `results/pilot/button-press-topdown-v3/`.
 
-The combined three-task cache is still in progress at this log update.
+The combined three-task cache later completed; the continuation is recorded below.
 
 ### Three-task training update
 
