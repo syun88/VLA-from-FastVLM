@@ -81,3 +81,9 @@ was still executing when this log was last updated; no LoRA success claim is mad
 
 Offline held-out results for the completed cached-feature conditions were recorded under
 `results/offline/`; all are test-split action errors and not substitutes for closed-loop success.
+
+The first combined three-task frozen pilot (5,000 updates) used 10 episodes per task at
+exploratory initial-state seeds from 100000: 9/10 button, 1/10 push, and 2/10 reach
+(12/30 overall). This exploratory result is copied to `results/pilot/multitask-frozen-5k/` and
+is distinct from the fresh-seed confirmatory evaluation. It indicates the 5,000-update action
+head is under-trained for push and reach, so no final FastVLM conclusion is drawn from it.

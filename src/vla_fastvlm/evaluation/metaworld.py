@@ -66,7 +66,9 @@ class MetaWorldAdapter:
         self._last_raw_obs = np.asarray(raw_obs, dtype=np.float64)
         return self._format_observation(raw_obs)
 
-    def step(self, action: np.ndarray) -> tuple[np.ndarray, np.ndarray, bool, bool, dict[str, Any]]:
+    def step(
+        self, action: np.ndarray, *, render: bool = True
+    ) -> tuple[np.ndarray | None, np.ndarray, bool, bool, dict[str, Any]]:
         self._ensure()
         if self._env is None:
             raise RuntimeError("Meta-World environment failed to initialize")
@@ -78,7 +80,8 @@ class MetaWorldAdapter:
         self._episode_steps += 1
         success = bool(info.get("success", 0))
         timed_out = self._episode_steps >= self.max_steps
-        image, state = self._format_observation(raw_obs)
+        state = np.asarray(raw_obs[:4], dtype=np.float32)
+        image = self.render_observation() if render else None
         return image, state, success or bool(done), bool(truncated or timed_out), {
             "success": success,
             "reward": float(reward),
@@ -88,7 +91,7 @@ class MetaWorldAdapter:
             "manipulation_error": self._manipulation_error(),
         }
 
-    def _format_observation(self, raw_obs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    def render_observation(self) -> np.ndarray:
         if self._env is None:
             raise RuntimeError("Meta-World environment failed to initialize")
         image = np.asarray(self._env.render())
@@ -99,7 +102,12 @@ class MetaWorldAdapter:
                 f"Rendered image {image.shape[:2]} does not match configured "
                 f"{(self.image_height, self.image_width)}"
             )
-        return image.copy(), np.asarray(raw_obs[:4], dtype=np.float32)
+        return image.copy()
+
+    def _format_observation(self, raw_obs: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        if self._env is None:
+            raise RuntimeError("Meta-World environment failed to initialize")
+        return self.render_observation(), np.asarray(raw_obs[:4], dtype=np.float32)
 
     def _manipulation_error(self) -> float:
         if self._env is None:
@@ -209,10 +217,15 @@ def evaluate_policy(
                             replan_jumps.append(
                                 float(np.linalg.norm(action - executed[-1]))
                             )
-                        image, state, terminated, truncated, info = env.step(action)
+                        image, state, terminated, truncated, info = env.step(
+                            action, render=False
+                        )
                         executed.append(action)
-                        if save_videos and episode < save_videos:
-                            frames.append(image)
+                        capture_video = bool(save_videos and episode < save_videos)
+                        if capture_video:
+                            frames.append(env.render_observation())
+                        if (step + 1) % replan_steps == 0:
+                            image = env.render_observation()
                         step_latency = timing["end_to_end_seconds"] / max(1, min(replan_steps, len(chunk)))
                         latencies.append(step_latency)
                         error = float(info.get("manipulation_error", float("nan")))
