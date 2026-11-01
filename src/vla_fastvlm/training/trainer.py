@@ -229,7 +229,7 @@ class CachedActionTrainer:
                 "trainable_parameter_count": self._trainable_parameter_count(),
             },
             tags=("fastvlm", "frozen", "action-head", *cfg.wandb_tags),
-            group=self.policy_config.backbone_mode,
+            group=cfg.wandb_group or self.policy_config.backbone_mode,
             mode=cfg.wandb_mode,
         )
         loss_and_grad = nn.value_and_grad(
@@ -238,6 +238,9 @@ class CachedActionTrainer:
         started = time.perf_counter()
         global_step = self.start_step
         last_metrics: dict[str, float] = {}
+        seen_episodes: set[tuple[str, int]] = set()
+        best_validation_mse = float("inf")
+        best_checkpoint: str | None = None
         try:
             for epoch in range(cfg.epochs):
                 if global_step >= total_steps:
@@ -250,6 +253,13 @@ class CachedActionTrainer:
                     if global_step >= total_steps:
                         break
                     batch_indices = order[batch_start : batch_start + cfg.batch_size]
+                    seen_episodes.update(
+                        (
+                            self.dataset.owners[int(index)],
+                            int(self.dataset.episodes[int(index)]),
+                        )
+                        for index in batch_indices
+                    )
                     batch = self.dataset.batch(batch_indices)
                     (loss, metrics), gradients = loss_and_grad(batch)
                     grad_norm = _grad_norm(gradients)
@@ -283,9 +293,14 @@ class CachedActionTrainer:
                         "train/samples_processed": float(
                             min(global_step + 1, total_steps) * cfg.batch_size
                         ),
+                        "train/episodes_processed": float(len(seen_episodes)),
                         "train/wall_clock_seconds": time.perf_counter() - started,
                         **{f"memory/{k}": v for k, v in mlx_memory_stats().items()},
                     }
+                    elapsed = max(1e-9, last_metrics["train/wall_clock_seconds"])
+                    last_metrics["train/samples_per_second"] = (
+                        last_metrics["train/samples_processed"] / elapsed
+                    )
                     if global_step % cfg.log_every == 0:
                         tracker.log(last_metrics, step=global_step)
                     global_step += 1
@@ -311,6 +326,16 @@ class CachedActionTrainer:
                         eval_metrics["train/epoch"] = float(epoch)
                         tracker.log(eval_metrics, step=global_step)
                         last_metrics.update(eval_metrics)
+                        if np.isfinite(mean_mse) and mean_mse < best_validation_mse:
+                            best_validation_mse = mean_mse
+                            best_checkpoint = str(
+                                self.save_checkpoint(
+                                    self.output_dir / "best",
+                                    tracker=tracker,
+                                    epoch=epoch,
+                                    global_step=global_step,
+                                )
+                            )
                 if epoch % cfg.save_every_epochs == 0 or epoch == cfg.epochs - 1:
                     self.save_checkpoint(
                         self.output_dir / f"step-{global_step}",
@@ -330,6 +355,10 @@ class CachedActionTrainer:
                 **last_metrics,
                 "train/wall_clock_seconds": time.perf_counter() - started,
                 "train/optimizer_steps": float(global_step - self.start_step),
+                "validation/best_normalized_mse": best_validation_mse
+                if np.isfinite(best_validation_mse)
+                else None,
+                "validation/best_checkpoint": best_checkpoint,
                 **{f"memory/{k}": v for k, v in mlx_memory_stats().items()},
             }
             tracker.summary(final_metrics)
@@ -466,9 +495,17 @@ class LoRAActionTrainer:
                 "dataset": self.dataset.metadata(),
                 **provenance,
                 "runtime": runtime_metadata(),
+                "trainable_parameter_count": int(
+                    sum(
+                        value.size
+                        for _, value in tree_flatten(
+                            self.composite.trainable_parameters()
+                        )
+                    )
+                ),
             },
             tags=("fastvlm", "lora", "action-chunking", *cfg.wandb_tags),
-            group="fastvlm-lora",
+            group=cfg.wandb_group or "fastvlm-lora",
             mode=cfg.wandb_mode,
         )
         if self.policy.backbone.model is None:
@@ -479,6 +516,10 @@ class LoRAActionTrainer:
         step = 0
         losses: list[float] = []
         grad_norms: list[float] = []
+        seen_episodes: set[tuple[str, int]] = set()
+        best_validation_mse = float("inf")
+        best_checkpoint: str | None = None
+        validation_every = max(100, total_steps // 8)
         try:
             while step < total_steps:
                 order = rng.permutation(train_indices)
@@ -491,6 +532,9 @@ class LoRAActionTrainer:
                     if cache.input_ids is None:  # pragma: no cover - defensive
                         raise RuntimeError("LoRA cache is missing token ids")
                     batch = self.dataset.batch(np.asarray([sample_index]))
+                    seen_episodes.add(
+                        (owner, int(self.dataset.episodes[int(sample_index)]))
+                    )
                     input_ids = mx.array(np.asarray(cache.input_ids[local])[None, :].astype(np.int32))
                     mask = mx.array(np.asarray(cache.attention_mask[local])[None, :].astype(np.int32))
                     image_position = int(cache.manifest["image_token_position"])
@@ -523,14 +567,48 @@ class LoRAActionTrainer:
                                 "train/gradient_norm": grad_value,
                                 "train/learning_rate": float(self.optimizer.learning_rate.item()),
                                 "train/global_step": float(step),
+                                "train/epoch": (step + 1) / max(1, total_steps),
                                 "train/samples_processed": float(step + 1),
+                                "train/episodes_processed": float(len(seen_episodes)),
                                 "train/wall_clock_seconds": time.perf_counter() - started,
+                                "train/samples_per_second": (step + 1)
+                                / max(1e-9, time.perf_counter() - started),
                                 "train/lora_delta_norm": float(self._lora_delta_norm().item()),
                                 **{f"memory/{k}": v for k, v in mlx_memory_stats().items()},
                             },
                             step=step,
                         )
                     step += 1
+                    if step % validation_every == 0 and validation_by_task:
+                        validation_metrics = {}
+                        for task_name, task_indices in validation_by_task.items():
+                            validation = self._evaluate_indices(
+                                task_indices, task_name=task_name, limit=128
+                            )
+                            validation_metrics.update(
+                                {
+                                    f"validation/{task_name}/{key}": value
+                                    for key, value in validation.items()
+                                }
+                            )
+                        mean_validation = float(
+                            np.mean(
+                                [
+                                    value
+                                    for key, value in validation_metrics.items()
+                                    if key.endswith("normalized_mse")
+                                ]
+                            )
+                        )
+                        validation_metrics["validation/normalized_mse"] = mean_validation
+                        tracker.log(validation_metrics, step=step)
+                        if np.isfinite(mean_validation) and mean_validation < best_validation_mse:
+                            best_validation_mse = mean_validation
+                            best_checkpoint = str(
+                                self.save_checkpoint(
+                                    self.output_dir / "best", tracker=tracker, step=step
+                                )
+                            )
                     if step % max(cfg.save_every_epochs * 100, 200) == 0:
                         self.save_checkpoint(
                             self.output_dir / f"step-{step}", tracker=tracker, step=step
@@ -548,12 +626,47 @@ class LoRAActionTrainer:
                     "train/final_loss_20": float(np.mean(losses[-20:])) if losses else None,
                     "train/lora_initial_delta_norm": float(initial_delta.item()),
                     "train/lora_final_delta_norm": float(self._lora_delta_norm().item()),
+                    "validation/best_normalized_mse": best_validation_mse
+                    if np.isfinite(best_validation_mse)
+                    else None,
+                    "validation/best_checkpoint": best_checkpoint,
                     **{f"memory/{k}": v for k, v in mlx_memory_stats().items()},
                 }
             )
             tracker.finish()
         self.save_checkpoint(self.output_dir / "final", tracker=tracker, step=step)
         return self.policy, tracker
+
+    def _evaluate_indices(
+        self, indices: np.ndarray, *, task_name: str, limit: int = 128
+    ) -> dict[str, float]:
+        if self.policy.action_policy is None:
+            raise RuntimeError("Action policy is not initialized")
+        self.policy.action_policy.eval()
+        self.policy.backbone.model.eval()
+        total_loss = 0.0
+        count = 0
+        for index in indices[:limit]:
+            local = self.dataset.local_indices[int(index)]
+            cache = self.dataset.tasks[task_name]
+            batch = self.dataset.batch(np.asarray([index]))
+            input_ids = mx.array(
+                np.asarray(cache.input_ids[local])[None, :].astype(np.int32)
+            )
+            mask = mx.array(
+                np.asarray(cache.attention_mask[local])[None, :].astype(np.int32)
+            )
+            loss, _ = self._loss(
+                batch,
+                input_ids,
+                int(cache.manifest["image_token_position"]),
+                mask,
+            )
+            total_loss += float(loss.item())
+            count += 1
+        self.policy.action_policy.train()
+        self.policy.backbone.model.train()
+        return {"normalized_mse": total_loss / max(1, count), "samples": float(count)}
 
     def _lora_delta_norm(self) -> mx.array:
         if self.policy.backbone.model is None:
@@ -599,6 +712,13 @@ class LoRAActionTrainer:
             "policy": self.policy_config.to_dict(),
             "training": asdict(self.train_config),
             "global_step": step,
+            "trainable_parameter_count": int(
+                sum(
+                    value.size
+                    for _, value in tree_flatten(self.composite.trainable_parameters())
+                )
+            ),
+            "lora_delta_norm": float(self._lora_delta_norm().item()),
             "dataset": self.dataset.metadata(),
             **(tracker.provenance() if tracker is not None else {}),
         }

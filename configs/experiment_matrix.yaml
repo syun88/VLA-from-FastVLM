@@ -13,6 +13,10 @@ base_model:
   local_mlx_checkpoint: /Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx
 
 seeds: [42, 43, 44]
+training_budget:
+  optimizer_steps: 5000
+  samples_per_update: 1
+  optimizer: AdamW
 
 conditions:
   - name: state-only

@@ -107,6 +107,7 @@ def main(args: Args) -> None:
         eval_every_epochs=args.eval_every_epochs,
         save_every_epochs=args.save_every_epochs,
         wandb_project=args.wandb_project,
+        wandb_group=args.run_name,
         wandb_mode=args.wandb_mode,  # type: ignore[arg-type]
         wandb_tags=(args.backbone_mode, f"seed-{args.seed}"),
     )

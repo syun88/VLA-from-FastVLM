@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from vla_fastvlm.data import FrameRecord, TaskData, build_action_chunks
+from vla_fastvlm.data import (
+    FrameRecord,
+    TaskData,
+    build_action_chunks,
+    load_or_create_split,
+)
 
 
 def _frame(episode: int, index: int, value: float) -> FrameRecord:
@@ -53,3 +58,24 @@ def test_action_chunks_select_every_stride() -> None:
     assert actions[1, 0, 0] == 2.0
     assert actions[2, 0, 0] == 4.0
     assert masks[-1].tolist() == [1.0, 0.0]
+
+
+def test_episode_splits_are_disjoint(tmp_path) -> None:
+    task = TaskData(
+        task_name="reach-v3",
+        instruction="Reach a goal position",
+        frames=[_frame(episode, 0, 0.0) for episode in range(7)],
+    )
+    split = load_or_create_split(
+        task,
+        tmp_path / "split.json",
+        train_episodes=4,
+        validation_episodes=2,
+        test_episodes=1,
+        seed=3,
+    )
+
+    assert set(split.train).isdisjoint(split.validation)
+    assert set(split.train).isdisjoint(split.test)
+    assert set(split.validation).isdisjoint(split.test)
+    assert sorted(split.train + split.validation + split.test) == list(range(7))

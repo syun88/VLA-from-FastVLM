@@ -97,6 +97,7 @@ def main(args: Args) -> None:
         warmup_ratio=args.warmup_ratio,
         save_every_epochs=max(1, args.save_every // 100),
         wandb_project=args.wandb_project,
+        wandb_group=args.run_name,
         wandb_mode=args.wandb_mode,  # type: ignore[arg-type]
         wandb_tags=("lora", f"seed-{args.seed}"),
     )

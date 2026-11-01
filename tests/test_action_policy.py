@@ -6,6 +6,7 @@ import mlx.optimizers as optim
 import numpy as np
 
 from vla_fastvlm.fastvla import ActionPolicy, FastVLAConfig, MLXFastVLAPolicy
+from vla_fastvlm.schema import CameraSpec, RobotSchema
 
 
 def _config() -> FastVLAConfig:
@@ -82,3 +83,18 @@ def test_multi_camera_and_non_metaworld_action_dimensions() -> None:
     )
 
     assert output.shape == (2, 16, 7)
+
+
+def test_dual_arm_robot_schema_is_serializable() -> None:
+    schema = RobotSchema(
+        robot_type="dual-scorpion",
+        cameras=(CameraSpec("left", "cam.left", 640, 480), CameraSpec("right", "cam.right", 640, 480)),
+        state_names=tuple(f"joint_{i}" for i in range(12)),
+        action_names=tuple(f"joint_cmd_{i}" for i in range(12)),
+        control_frequency_hz=30,
+        action_horizon=16,
+        action_space="joint_position",
+    )
+    schema.validate()
+    assert schema.to_dict()["cameras"][0]["name"] == "left"
+    assert schema.state_dim == schema.action_dim == 12

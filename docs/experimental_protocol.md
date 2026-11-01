@@ -31,9 +31,12 @@ different adapters without changing FastVLM.
 6. A lightweight alternative VLM with the same action-head interface, if its runtime and
    checkpoint pass licensing and compatibility checks.
 
-All methods use the same tasks, episode splits, stride, action horizon, optimizer family,
-parameter budget where applicable, and evaluation seeds. Differences in pretrained history
-and architecture remain explicit limitations.
+All confirmatory methods use the same 5,000 optimizer updates with one demonstration per
+update, the same tasks, episode splits, stride, action horizon, optimizer family, and evaluation
+seeds. This equal sample-exposure budget does not equalize wall-clock time: the FastVLM LoRA
+condition must backpropagate through the language layers, while action-head conditions use
+cached features. Training time, samples/second, and memory are reported rather than hidden.
+Differences in pretrained history and architecture remain explicit limitations.
 
 ## Metrics
 

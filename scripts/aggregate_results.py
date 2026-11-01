@@ -57,6 +57,13 @@ def main(args: Args) -> None:
         checkpoint = Path(summary["checkpoint"])
         metadata_path = checkpoint / "metadata.json"
         metadata = json.loads(metadata_path.read_text(encoding="utf-8")) if metadata_path.is_file() else {}
+        config_path = checkpoint / "config.json"
+        checkpoint_config = (
+            json.loads(config_path.read_text(encoding="utf-8"))
+            if config_path.is_file()
+            else {}
+        )
+        metadata = {**metadata, "policy": metadata.get("policy", checkpoint_config)}
         seed = metadata.get("training", {}).get("seed")
         condition = condition_name(metadata)
         for task, episodes in summary["task_results"].items():
@@ -152,6 +159,13 @@ def main(args: Args) -> None:
         checkpoint = Path(payload["checkpoint"])
         metadata_path = checkpoint / "metadata.json"
         metadata = json.loads(metadata_path.read_text(encoding="utf-8")) if metadata_path.is_file() else {}
+        config_path = checkpoint / "config.json"
+        checkpoint_config = (
+            json.loads(config_path.read_text(encoding="utf-8"))
+            if config_path.is_file()
+            else {}
+        )
+        metadata = {**metadata, "policy": metadata.get("policy", checkpoint_config)}
         for resolution, result in payload.get("results", {}).items():
             benchmark_rows.append(
                 {

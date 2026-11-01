@@ -127,6 +127,7 @@ class TrainConfig:
     eval_every_epochs: int = 2
     save_every_epochs: int = 10
     wandb_project: str = "fastvlm-vla-research"
+    wandb_group: str | None = None
     wandb_mode: Literal["online", "offline", "disabled"] = "online"
     wandb_tags: tuple[str, ...] = ()
 

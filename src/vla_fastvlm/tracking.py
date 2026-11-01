@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import platform
+import resource
 import subprocess
 import time
 from pathlib import Path
@@ -26,7 +27,10 @@ def git_metadata(repo_root: str | Path) -> dict[str, str]:
 
 
 def mlx_memory_stats() -> dict[str, float]:
-    stats: dict[str, float] = {}
+    stats: dict[str, float] = {
+        "process_rss_gb": float(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss)
+        / (1e6 if platform.system() == "Darwin" else 1e3)
+    }
     for name, function in (
         ("active_gb", getattr(mx, "get_active_memory", None)),
         ("cache_gb", getattr(mx, "get_cache_memory", None)),
