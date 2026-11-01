@@ -27,9 +27,11 @@ class LiveViewer:
         cv2.moveWindow(self.window, 40, 40)
         cv2.setWindowProperty(self.window, cv2.WND_PROP_TOPMOST, 1)
 
-    def show(self, frame: np.ndarray, message: str, step: int, max_steps: int) -> None:
+    def show(
+        self, frame: np.ndarray, message: str, step: int, max_steps: int
+    ) -> str | None:
         if self.closed:
-            return
+            return None
         image = cv2.resize(
             cv2.cvtColor(frame, cv2.COLOR_RGB2BGR),
             (640, 640),
@@ -77,14 +79,21 @@ class LiveViewer:
         cv2.rectangle(canvas, (90, 690), (730, 700), (55, 60, 70), -1)
         cv2.rectangle(canvas, (90, 690), (90 + int(640 * fraction), 700), (40, 180, 240), -1)
         cv2.imshow(self.window, canvas)
-        if cv2.waitKey(1) & 0xFF in (27, ord("q")):
+        key = cv2.waitKey(1) & 0xFF
+        if key in (27, ord("q")):
             self.close()
+        elif key == ord("r"):
+            return "r"
+        return None
 
-    def wait(self) -> None:
+    def wait_for_command(self, timeout_ms: int = 100) -> str | None:
         while not self.closed:
-            key = cv2.waitKey(100) & 0xFF
+            key = cv2.waitKey(timeout_ms) & 0xFF
             if key in (27, ord("q")):
                 break
+            if key == ord("r"):
+                return "r"
+        return None
         self.close()
 
     def close(self) -> None:
@@ -103,6 +112,7 @@ def main() -> None:
     parser.add_argument("--max-steps", type=int, default=500)
     parser.add_argument("--replan-steps", type=int, default=8)
     parser.add_argument("--display-fps", type=float, default=30.0)
+    parser.add_argument("--max-episodes", type=int, default=0)
     args = parser.parse_args()
 
     checkpoint = Path(args.checkpoint)
@@ -123,87 +133,118 @@ def main() -> None:
     )
     policy = MLXFastVLAPolicy.load(checkpoint, load_backbone=True)
     env = MetaWorldAdapter(args.task, max_steps=args.max_steps)
-    frame, state = env.reset(args.seed)
-    viewer.show(frame, "Ready — starting policy inference", 0, args.max_steps)
-
-    queue: list[np.ndarray] = []
-    timing = {}
-    chunk_index = 0
-    success = False
     frame_delay = 1.0 / args.display_fps
+    episode_index = 0
+    next_seed = args.seed
     try:
-        for step in range(args.max_steps):
-            if step % args.replan_steps == 0:
-                chunk_index += 1
-                viewer.show(
-                    frame,
-                    f"FastVLM inference at control step {step}…\n"
-                    f"task: {FASTVLA_TASKS[args.task]}",
-                    step,
-                    args.max_steps,
-                )
-                chunk, timing = policy.predict_chunk(
-                    frame,
-                    (state - state_mean) / state_std,
-                    FASTVLA_TASKS[args.task],
-                )
-                queue = list(chunk * action_std + action_mean)
-                print(
-                    f"chunk={chunk_index} step={step} "
-                    f"first_action={np.round(queue[0], 4).tolist()} "
-                    f"inference_s={timing['end_to_end_seconds']:.3f} "
-                    f"frame_sha256={hashlib.sha256(frame.tobytes()).hexdigest()[:16]}",
-                    flush=True,
-                )
-            action = queue.pop(0)
-            frame, state, terminated, truncated, info = env.step(action, render=False)
-            frame = env.render_observation()
-            diagnostics = env.diagnostics()
+        while not viewer.closed and (args.max_episodes == 0 or episode_index < args.max_episodes):
+            episode_index += 1
+            seed = next_seed
+            frame, state = env.reset(seed)
+            queue: list[np.ndarray] = []
+            timing = {}
+            chunk_index = 0
+            success = False
+            restart_requested = False
             viewer.show(
                 frame,
-                f"LIVE MuJoCo | chunk {chunk_index} | step {step + 1:03d} | "
-                f"inference {timing.get('end_to_end_seconds', 0):.3f}s\n"
-                f"action=[{action[0]:+.3f}, {action[1]:+.3f}, {action[2]:+.3f}, {action[3]:.2f}]\n"
-                f"object-to-target |Δz|={diagnostics.get('object_to_target_abs_z', float('nan')):.5f}\n"
-                f"success={bool(info.get('success', False))}",
+                f"episode {episode_index} | seed={seed} | random spawn ready\n"
+                "[R] random object spawn  [Q] quit",
+                0,
+                args.max_steps,
+            )
+
+            for step in range(args.max_steps):
+                if step % args.replan_steps == 0:
+                    chunk_index += 1
+                    key = viewer.show(
+                        frame,
+                        f"FastVLM inference at control step {step}…\n"
+                        f"task: {FASTVLA_TASKS[args.task]}",
+                        step,
+                        args.max_steps,
+                    )
+                    if key == "r":
+                        restart_requested = True
+                        break
+                    chunk, timing = policy.predict_chunk(
+                        frame,
+                        (state - state_mean) / state_std,
+                        FASTVLA_TASKS[args.task],
+                    )
+                    queue = list(chunk * action_std + action_mean)
+                    print(
+                        f"episode={episode_index} chunk={chunk_index} step={step} seed={seed} "
+                        f"first_action={np.round(queue[0], 4).tolist()} "
+                        f"inference_s={timing['end_to_end_seconds']:.3f} "
+                        f"frame_sha256={hashlib.sha256(frame.tobytes()).hexdigest()[:16]}",
+                        flush=True,
+                    )
+                action = queue.pop(0)
+                frame, state, terminated, truncated, info = env.step(action, render=False)
+                frame = env.render_observation()
+                diagnostics = env.diagnostics()
+                key = viewer.show(
+                    frame,
+                    f"LIVE MuJoCo | chunk {chunk_index} | step {step + 1:03d} | "
+                    f"inference {timing.get('end_to_end_seconds', 0):.3f}s\n"
+                    f"action=[{action[0]:+.3f}, {action[1]:+.3f}, {action[2]:+.3f}, {action[3]:.2f}]\n"
+                    f"object=({diagnostics.get('object_x', float('nan')):.3f}, "
+                    f"{diagnostics.get('object_y', float('nan')):.3f}, "
+                    f"{diagnostics.get('object_z', float('nan')):.3f}) | "
+                    f"|Δz|={diagnostics.get('object_to_target_abs_z', float('nan')):.5f}\n"
+                    f"success={bool(info.get('success', False))} | [R] random spawn  [Q] quit",
+                    step + 1,
+                    args.max_steps,
+                )
+                if key == "r":
+                    restart_requested = True
+                    break
+                if (step + 1) % 10 == 0:
+                    print(
+                        f"episode={episode_index} step={step + 1} success={bool(info.get('success', False))} "
+                        f"inference={timing.get('end_to_end_seconds', 0):.3f}s",
+                        flush=True,
+                    )
+                time.sleep(frame_delay)
+                if terminated or truncated:
+                    success = bool(info.get("success", False))
+                    break
+
+            viewer.show(
+                frame,
+                ("SUCCESS" if success else ("RESETTING" if restart_requested else "FAILED / TIMEOUT"))
+                + f" | episode={episode_index} | seed={seed} | steps={step + 1}\n"
+                + "Press [R] for a random object spawn or [Q] to quit.",
                 step + 1,
                 args.max_steps,
             )
-            if (step + 1) % 10 == 0:
-                print(
-                    f"step={step + 1} success={bool(info.get('success', False))} "
-                    f"inference={timing.get('end_to_end_seconds', 0):.3f}s",
-                    flush=True,
-                )
-            time.sleep(frame_delay)
-            if terminated or truncated:
-                success = bool(info.get("success", False))
+            print(
+                json.dumps(
+                    {
+                        "checkpoint": str(checkpoint),
+                        "task": args.task,
+                        "episode": episode_index,
+                        "seed": seed,
+                        "success": success,
+                        "steps": step + 1,
+                        "final_inference_seconds": timing.get("end_to_end_seconds"),
+                    }
+                ),
+                flush=True,
+            )
+            if restart_requested:
+                next_seed = int(np.random.default_rng().integers(0, 2**31 - 1))
+                print(f"random object spawn seed={next_seed}", flush=True)
+                continue
+            command = viewer.wait_for_command()
+            if command != "r":
                 break
+            next_seed = int(np.random.default_rng().integers(0, 2**31 - 1))
+            print(f"random object spawn seed={next_seed}", flush=True)
     finally:
         env.close()
-
-    viewer.show(
-        frame,
-        ("SUCCESS" if success else "FAILED / TIMEOUT")
-        + f" | steps={step + 1} | seed={args.seed}\n"
-        + "Close this window or press q when finished.",
-        step + 1,
-        args.max_steps,
-    )
-    print(
-        json.dumps(
-            {
-                "checkpoint": str(checkpoint),
-                "task": args.task,
-                "seed": args.seed,
-                "success": success,
-                "steps": step + 1,
-                "final_inference_seconds": timing.get("end_to_end_seconds"),
-            }
-        ),
-        flush=True,
-    )
-    viewer.wait()
+        viewer.close()
 
 
 if __name__ == "__main__":

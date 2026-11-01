@@ -117,6 +117,10 @@ chunk count, action values, and the native task success bit. The simulation is r
 30 FPS, while policy inference takes roughly 0.4 s per eight-action chunk; it is therefore a
 live but compute-paced demonstration, not native 80-Hz real-time control.
 
+Press `R` for a fresh episode with a newly random-spawned object, or `Q`/Escape to quit. A random
+spawn changes the object's task-native randomized position and is followed by a new FastVLM
+inference on the reset observation.
+
 See [`docs/experimental_protocol.md`](docs/experimental_protocol.md) for comparisons and
 statistical rules, and [`docs/upstream_audit.md`](docs/upstream_audit.md) for exact revisions,
 local measurements, compatibility findings, and the model-license decision.

@@ -201,6 +201,9 @@ FastVLM-LoRA checkpoint に実際に入力し、返った action chunk でシミ
 8 action chunk の推論に約 0.4 秒かかるため、80 Hz の実時間制御ではなく compute-paced な
 ライブ demo です。
 
+`R` キーで object を新しい random spawn 位置に置いて同じ checkpoint を再推論します。`Q` または
+Escape で終了します。
+
 Counterfactual instruction の評価では `--counterfactual` を追加します。環境 seed と episode 数を
 維持し、instruction だけを別 task の instruction に置き換えます。
 

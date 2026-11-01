@@ -80,6 +80,15 @@ Frozen FastVLM seed 43 completed the same protocol: 29/50 button, 2/50 push, 11/
 42/150 pooled (28.0%). W&B run ID: `nwv1lwcc`. The between-seed difference is material and is
 part of the reported uncertainty, not a result to average away silently.
 
+### Interactive random-spawn check
+
+The live viewer's `R` key was exercised against the seed-42 LoRA checkpoint. It resets the same
+Meta-World environment using the task's native random object-placement space and immediately
+recomputes a policy action chunk. Three interactive random seeds were tried:
+`366929013` (failure at 500 steps), `396323305` (failure at 47 steps), and `790126988`
+(failure at 500 steps). This is a three-episode usability check, not a formal success-rate
+estimate; it exposes a clear fragility to object placement that the controlled evaluation needed.
+
 The FastVLM LoRA seed-42 run completed 5,000 updates with 5,654,184 trainable parameters. A
 dedicated one-step check showed a nonzero gradient and a changed adapter norm, and the saved
 adapter was materially changed after training. Its validation normalized MSE was 0.4902 versus
