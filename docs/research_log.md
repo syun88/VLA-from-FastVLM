@@ -76,8 +76,10 @@ State-only closed-loop evaluation completed with 50 test episodes per task and t
 The FastVLM LoRA seed-42 run completed 5,000 updates with 5,654,184 trainable parameters. A
 dedicated one-step check showed a nonzero gradient and a changed adapter norm, and the saved
 adapter was materially changed after training. Its validation normalized MSE was 0.4902 versus
-0.4236 for frozen FastVLM seed 42 in this low-data budget. The 50-episode LoRA closed-loop run
-was still executing when this log was last updated; no LoRA success claim is made yet.
+0.4236 for frozen FastVLM seed 42 in this low-data budget. A LoRA closed-loop run was stopped
+after 10 exploratory button episodes (3 successes) to remove redundant per-control-step
+rendering; that partial run is not a result. The 50-episode LoRA evaluation must be rerun with
+the optimized rollout loop. LoRA seeds 43 and 44 also remain to be trained.
 
 Offline held-out results for the completed cached-feature conditions were recorded under
 `results/offline/`; all are test-split action errors and not substitutes for closed-loop success.
@@ -87,3 +89,15 @@ exploratory initial-state seeds from 100000: 9/10 button, 1/10 push, and 2/10 re
 (12/30 overall). This exploratory result is copied to `results/pilot/multitask-frozen-5k/` and
 is distinct from the fresh-seed confirmatory evaluation. It indicates the 5,000-update action
 head is under-trained for push and reach, so no final FastVLM conclusion is drawn from it.
+
+### Open work at interruption boundary
+
+- Fresh-seed 50-episode closed-loop evaluations for frozen FastVLM, FastViTHD-only, and
+  global-only across all three training seeds.
+- Rerun the cleaned-up 50-episode LoRA evaluation and train LoRA seeds 43/44.
+- SmolVLM2-500M cache, training, and matched evaluation.
+- Resolution/token-count benchmark, generated tables/figures, final paper text, and the
+  license-compliant Hugging Face release candidate.
+
+The resumable command sequence is in `README.md`; all completed checkpoints and W&B/run
+identifiers remain under `/Volumes/data/checkpoints/fastvla/` and the private W&B project.
