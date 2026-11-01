@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import time
 from pathlib import Path
@@ -127,11 +128,13 @@ def main() -> None:
 
     queue: list[np.ndarray] = []
     timing = {}
+    chunk_index = 0
     success = False
     frame_delay = 1.0 / args.display_fps
     try:
         for step in range(args.max_steps):
             if step % args.replan_steps == 0:
+                chunk_index += 1
                 viewer.show(
                     frame,
                     f"FastVLM inference at control step {step}…\n"
@@ -145,13 +148,23 @@ def main() -> None:
                     FASTVLA_TASKS[args.task],
                 )
                 queue = list(chunk * action_std + action_mean)
+                print(
+                    f"chunk={chunk_index} step={step} "
+                    f"first_action={np.round(queue[0], 4).tolist()} "
+                    f"inference_s={timing['end_to_end_seconds']:.3f} "
+                    f"frame_sha256={hashlib.sha256(frame.tobytes()).hexdigest()[:16]}",
+                    flush=True,
+                )
             action = queue.pop(0)
             frame, state, terminated, truncated, info = env.step(action, render=False)
             frame = env.render_observation()
+            diagnostics = env.diagnostics()
             viewer.show(
                 frame,
-                f"step {step + 1:03d} | inference {timing.get('end_to_end_seconds', 0):.3f}s\n"
-                f"action=[{action[0]:+.3f}, {action[1]:+.3f}, {action[2]:+.3f}, {action[3]:+.2f}]\n"
+                f"LIVE MuJoCo | chunk {chunk_index} | step {step + 1:03d} | "
+                f"inference {timing.get('end_to_end_seconds', 0):.3f}s\n"
+                f"action=[{action[0]:+.3f}, {action[1]:+.3f}, {action[2]:+.3f}, {action[3]:.2f}]\n"
+                f"object-to-target |Δz|={diagnostics.get('object_to_target_abs_z', float('nan')):.5f}\n"
                 f"success={bool(info.get('success', False))}",
                 step + 1,
                 args.max_steps,

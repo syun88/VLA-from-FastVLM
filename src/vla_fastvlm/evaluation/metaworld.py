@@ -127,6 +127,21 @@ class MetaWorldAdapter:
             pass
         return float("nan")
 
+    def diagnostics(self) -> dict[str, float | bool]:
+        """Read-only task diagnostics used by the live viewer."""
+
+        if self._env is None:
+            return {}
+        result: dict[str, float | bool] = {}
+        try:
+            obj = np.asarray(self._env._get_pos_objects(), dtype=np.float64)
+            target = np.asarray(self._env._target_pos, dtype=np.float64)
+            result["object_to_target_distance"] = float(np.linalg.norm(obj - target))
+            result["object_to_target_abs_z"] = float(abs(obj[2] - target[2]))
+        except Exception:
+            pass
+        return result
+
     def close(self) -> None:
         if self._env is not None:
             self._env.close()
