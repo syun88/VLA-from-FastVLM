@@ -335,6 +335,9 @@ def evaluate_policy(
         "checkpoint": str(checkpoint_dir),
         "tasks": tasks,
         "episodes_per_task": episodes,
+        "replan_steps": replan_steps,
+        "max_steps": max_steps,
+        "seed_start": seed_start,
         "total_episodes": len(all_results),
         "successes": sum(int(result["success"]) for result in all_results),
         "success_rate": sum(int(result["success"]) for result in all_results)

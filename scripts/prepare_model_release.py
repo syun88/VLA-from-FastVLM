@@ -21,7 +21,7 @@ class Args:
     upload: bool = False
 
 
-def _metrics_text(summary_paths: list[Path]) -> str:
+def _metrics_text(summary_paths: list[Path], checkpoint: Path) -> str:
     if not summary_paths:
         return "No confirmatory closed-loop result file was supplied at release preparation time."
     lines = [
@@ -30,11 +30,17 @@ def _metrics_text(summary_paths: list[Path]) -> str:
     ]
     for path in summary_paths:
         summary = json.loads(path.read_text(encoding="utf-8"))
+        if Path(summary.get("checkpoint", "")).resolve() != checkpoint.resolve():
+            continue
         lines.append(
             f"| {path.parent.name} | {summary['total_episodes']} | {summary['successes']} | "
             f"{summary['success_rate']:.3f} | {summary.get('wandb_run_id') or 'local'} |"
         )
-    return "\n".join(lines)
+    return (
+        "\n".join(lines)
+        if len(lines) > 2
+        else "No confirmatory closed-loop result file was supplied for this exact checkpoint."
+    )
 
 
 def main(args: Args) -> None:
@@ -87,12 +93,20 @@ def main(args: Args) -> None:
     shutil.copy2(Path(__file__).resolve().parents[1] / "LICENSE", output / "LICENSE-MIT.txt")
 
     summaries = sorted(Path("/").glob(args.evaluation_glob.lstrip("/")))
-    metrics = _metrics_text(summaries)
-    modifications = (
-        "Added an 8-step MLX action-chunk head. For LoRA checkpoints, attached research LoRA "
-        "adapters to FastVLM Qwen2 attention/MLP projection layers while freezing FastViTHD "
-        "and the multimodal projector during cached-feature training."
-    )
+    metrics = _metrics_text(summaries, checkpoint)
+    if policy.config.backbone_mode == "lora":
+        modifications = (
+            "Added an 8-step MLX action-chunk head and trained research LoRA adapters on "
+            "FastVLM Qwen2 attention/MLP projection layers. FastViTHD and the multimodal "
+            "projector remained frozen during cached-feature training; the inference release "
+            "adapter requires the cited Apple base checkpoint."
+        )
+    else:
+        modifications = (
+            "Added an 8-step MLX action-chunk head over frozen FastVLM hidden and projected "
+            "FastViTHD features. The Apple base weights are not modified by this release; the "
+            "action head is an independently trained research artifact."
+        )
     card = f"""---
 license: apple-amlr
 library_name: mlx
@@ -129,6 +143,7 @@ Model License Agreement. This artifact is restricted to non-commercial research 
 
 - Project source: https://github.com/syun88/VLA-from-FastVLM
 - Source commit: `{metadata.get('git_sha')}`
+- Training-tree dirty flag: `{metadata.get('git_dirty')}`
 - Checkpoint mode: `{policy.config.backbone_mode}`
 - Action horizon: `{policy.config.action_horizon}`
 - State/action dimensions: `{policy.config.state_dim}` / `{policy.config.action_dim}`

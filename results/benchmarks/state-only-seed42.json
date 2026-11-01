@@ -1,0 +1,55 @@
+{
+  "checkpoint": "/Volumes/data/checkpoints/fastvla/runs/state-only-seed42/best",
+  "task": "reach-v3",
+  "instruction": "Reach a goal position",
+  "iterations": 100,
+  "warmup": 3,
+  "results": {
+    "1024": {
+      "resolution": 1024,
+      "cold_load_seconds": 0.5596691670070868,
+      "action_chunk_size": 8,
+      "visual_token_count": null,
+      "amortized_action_ms": 0.0407396255468484,
+      "stages": {
+        "preprocessing_seconds": {
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "mean_ms": 0.0
+        },
+        "vision_seconds": {
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "mean_ms": 0.0
+        },
+        "language_seconds": {
+          "p50_ms": 0.0,
+          "p95_ms": 0.0,
+          "mean_ms": 0.0
+        },
+        "action_head_seconds": {
+          "p50_ms": 0.3259170043747872,
+          "p95_ms": 1.7392173118423664,
+          "mean_ms": 0.47803300170926377
+        },
+        "end_to_end_seconds": {
+          "p50_ms": 0.3259170043747872,
+          "p95_ms": 1.7392173118423664,
+          "mean_ms": 0.47803300170926377
+        }
+      },
+      "memory/process_rss_gb": 0.643022848,
+      "memory/active_gb": 0.001250868,
+      "memory/cache_gb": 9.148e-06,
+      "memory/peak_gb": 0.001259896
+    }
+  },
+  "wandb_project": "fastvlm-vla-research",
+  "wandb_run_id": "lado8tjw",
+  "wandb_url": "https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/aro7f81q",
+  "wandb_mode_requested": "online",
+  "wandb_mode_effective": "online",
+  "wandb_error": null,
+  "tracked_at_unix": 1793519983.106112,
+  "wandb_synced_from_offline": true
+}

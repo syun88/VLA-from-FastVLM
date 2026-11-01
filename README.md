@@ -1,5 +1,11 @@
 # VLA-from-FastVLM
 
+[![CI](https://github.com/syun88/VLA-from-FastVLM/actions/workflows/ci.yml/badge.svg?branch=research/mlx-fastvla)](https://github.com/syun88/VLA-from-FastVLM/actions/workflows/ci.yml)
+
+CI runs on the pinned ARM64 `macos-15` runner because MLX is an Apple-Silicon runtime. Tagged
+releases build and validate the Python distributions and attach them to a GitHub Release; model
+weights remain governed by the separate Apple license and are not published by that workflow.
+
 MLX-native research on whether Apple's FastVLM is an effective and efficient backbone for
 robotic Vision-Language-Action learning. The active system runs genuine FastVLM image and
 language computation on Apple Silicon, trains an action-chunk head and optional language LoRA
