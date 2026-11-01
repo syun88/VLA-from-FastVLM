@@ -2,22 +2,23 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import tyro
 
 from vla_fastvlm.fastvla import FastVLAConfig, TrainConfig
+from vla_fastvlm.paths import fastvlm_mlx_path, feature_cache_root, runs_root
 from vla_fastvlm.training import CachedActionTrainer, MultiTaskCache
 
 
 @dataclass
 class Args:
-    cache_root: str = "/Volumes/data/dataset/fastvla/features"
+    cache_root: str = field(default_factory=lambda: str(feature_cache_root()))
     tasks: str = "button-press-topdown-v3,push-v3,reach-v3"
     run_name: str = "fastvlm-frozen-action-head"
-    output_root: str = "/Volumes/data/checkpoints/fastvla/runs"
+    output_root: str = field(default_factory=lambda: str(runs_root()))
     backbone_mode: str = "frozen"
     seed: int = 42
     epochs: int = 40
@@ -31,7 +32,7 @@ class Args:
     head_hidden_dim: int = 512
     backbone_family: str = "fastvlm"
     base_model: str = "apple/FastVLM-0.5B"
-    base_model_path: str = "/Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx"
+    base_model_path: str = field(default_factory=lambda: str(fastvlm_mlx_path()))
     base_revision: str = "16375720c2d673fa583e57e9876afde27549c7d0"
     visual_hidden_size: int = 896
     spatial_grid: int = 4

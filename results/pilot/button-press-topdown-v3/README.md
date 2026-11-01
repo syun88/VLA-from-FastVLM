@@ -5,9 +5,9 @@ confirmatory multi-seed result and must not be used to claim general FastVLM sup
 
 | Condition | Successes / episodes | W&B run | Checkpoint |
 | --- | ---: | --- | --- |
-| FastVLM frozen, global + spatial + state | 10 / 10 | `0uke4wrc` | `/Volumes/data/checkpoints/fastvla/pilots/pilot-button-frozen-seed42-seed42/final` |
-| FastViTHD spatial only | 10 / 10 | `7fxsmd2b` | `/Volumes/data/checkpoints/fastvla/pilots/pilot-button-fastvithd-seed42-seed42/final` |
-| State only | 4 / 10 | `nnvg22rf` | `/Volumes/data/checkpoints/fastvla/pilots/pilot-button-state-seed42-seed42/final` |
+| FastVLM frozen, global + spatial + state | 10 / 10 | `0uke4wrc` | `fastvla/pilots/pilot-button-frozen-seed42-seed42/final` |
+| FastViTHD spatial only | 10 / 10 | `7fxsmd2b` | `fastvla/pilots/pilot-button-fastvithd-seed42-seed42/final` |
+| State only | 4 / 10 | `nnvg22rf` | `fastvla/pilots/pilot-button-state-seed42-seed42/final` |
 
 All conditions used the same episode split, 8-step replanning, 500-step maximum, and held-out
 initial-state seeds starting at 200000. Training used 20 epochs on only the button task. The

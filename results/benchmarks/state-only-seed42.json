@@ -1,5 +1,5 @@
 {
-  "checkpoint": "/Volumes/data/checkpoints/fastvla/runs/state-only-seed42/best",
+  "checkpoint": "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/state-only-seed42/best",
   "task": "reach-v3",
   "instruction": "Reach a goal position",
   "iterations": 100,
@@ -46,7 +46,6 @@
   },
   "wandb_project": "fastvlm-vla-research",
   "wandb_run_id": "lado8tjw",
-  "wandb_url": "https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/aro7f81q",
   "wandb_mode_requested": "online",
   "wandb_mode_effective": "online",
   "wandb_error": null,

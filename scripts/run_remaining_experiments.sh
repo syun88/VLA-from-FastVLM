@@ -2,10 +2,12 @@
 set -euo pipefail
 
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-runs_root="/Volumes/data/checkpoints/fastvla/runs"
-eval_root="/Volumes/data/checkpoints/fastvla/evals"
-benchmark_root="/Volumes/data/checkpoints/fastvla/benchmarks"
-smol_cache="/Volumes/data/dataset/fastvla/features-smolvlm"
+work_root="${FASTVLA_WORK_ROOT:?Set FASTVLA_WORK_ROOT to the local artifact directory}"
+runs_root="$work_root/checkpoints/fastvla/runs"
+eval_root="$work_root/checkpoints/fastvla/evals"
+benchmark_root="$work_root/checkpoints/fastvla/benchmarks"
+smol_cache="$work_root/dataset/fastvla/features-smolvlm"
+smol_model="${FASTVLA_SMOLVLM_MLX:-$work_root/models/smolvlm2-500m-mlx}"
 cd "$repo_root"
 
 > /tmp/fastvla-queue-status
@@ -107,7 +109,7 @@ python3 scripts/cache_features.py \
   --cache-root "$smol_cache" \
   --backbone-family smolvlm \
   --base-model HuggingFaceTB/SmolVLM2-500M-Video-Instruct \
-  --base-model-path /Volumes/data/checkpoints/fastvla/models/smolvlm2-500m-mlx \
+  --base-model-path "$smol_model" \
   --base-revision 7b375e1b73b11138ff12fe22c8f2822d8fe03467 \
   --visual-hidden-size 960 \
   --wandb-mode online
@@ -119,7 +121,7 @@ for seed in 42 43 44; do
     --backbone-mode frozen \
     --backbone-family smolvlm \
     --base-model HuggingFaceTB/SmolVLM2-500M-Video-Instruct \
-    --base-model-path /Volumes/data/checkpoints/fastvla/models/smolvlm2-500m-mlx \
+    --base-model-path "$smol_model" \
     --base-revision 7b375e1b73b11138ff12fe22c8f2822d8fe03467 \
     --visual-hidden-size 960 \
     --seed "$seed" \

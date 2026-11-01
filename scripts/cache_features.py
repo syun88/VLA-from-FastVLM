@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from io import BytesIO
 from pathlib import Path
 
@@ -19,6 +19,11 @@ from vla_fastvlm.data import (
     scan_metaworld,
 )
 from vla_fastvlm.fastvla import FastVLAConfig, FastVLMBackbone
+from vla_fastvlm.paths import (
+    dataset_root,
+    fastvlm_mlx_path,
+    feature_cache_root,
+)
 from vla_fastvlm.tracking import (
     ExperimentTracker,
     git_metadata,
@@ -29,10 +34,10 @@ from vla_fastvlm.tracking import (
 
 @dataclass
 class Args:
-    dataset_root: str = "/Volumes/data/huggingface/lerobot/lerobot/metaworld_mt50"
-    cache_root: str = "/Volumes/data/dataset/fastvla/features"
+    dataset_root: str = field(default_factory=lambda: str(dataset_root()))
+    cache_root: str = field(default_factory=lambda: str(feature_cache_root()))
     tasks: str = "button-press-topdown-v3,push-v3,reach-v3"
-    base_model_path: str = "/Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx"
+    base_model_path: str = field(default_factory=lambda: str(fastvlm_mlx_path()))
     base_model: str = "apple/FastVLM-0.5B"
     base_revision: str = "16375720c2d673fa583e57e9876afde27549c7d0"
     backbone_family: str = "fastvlm"

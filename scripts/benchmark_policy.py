@@ -5,7 +5,7 @@ import copy
 import io
 import json
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import mlx.core as mx
@@ -15,6 +15,7 @@ import tyro
 from PIL import Image
 
 from vla_fastvlm.fastvla import MLXFastVLAPolicy
+from vla_fastvlm.paths import benchmarks_root, dataset_root
 from vla_fastvlm.tracking import (
     ExperimentTracker,
     git_metadata,
@@ -27,13 +28,13 @@ from vla_fastvlm.tracking import (
 class Args:
     checkpoint: str
     task: str = "reach-v3"
-    dataset_root: str = "/Volumes/data/huggingface/lerobot/lerobot/metaworld_mt50"
-    parquet: str = "/Volumes/data/huggingface/lerobot/lerobot/metaworld_mt50/data/chunk-000/file-000.parquet"
+    dataset_root: str = field(default_factory=lambda: str(dataset_root()))
+    parquet: str = ""
     image_index: int = 100
     warmup: int = 3
     iterations: int = 30
     resolutions: str = "1024"
-    output_root: str = "/Volumes/data/checkpoints/fastvla/benchmarks"
+    output_root: str = field(default_factory=lambda: str(benchmarks_root()))
     wandb_project: str = "fastvlm-vla-research"
     wandb_mode: str = "online"
 
@@ -52,7 +53,10 @@ def main(args: Args) -> None:
     state = np.zeros(len(norm["state_mean"]), dtype=np.float32)
     state[: min(3, len(state))] = np.asarray(norm["state_mean"], dtype=np.float32)[: min(3, len(state))]
     instruction = task_meta["instruction"]
-    image = _image_from_parquet(args.parquet, args.image_index)
+    parquet = args.parquet or str(
+        Path(args.dataset_root) / "data" / "chunk-000" / "file-000.parquet"
+    )
+    image = _image_from_parquet(parquet, args.image_index)
     tracker = ExperimentTracker(
         project=args.wandb_project,
         name=f"benchmark-{checkpoint.parent.name}",

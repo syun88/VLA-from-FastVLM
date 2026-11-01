@@ -5,18 +5,22 @@ import csv
 import json
 import math
 from collections import defaultdict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
 import tyro
 
+from vla_fastvlm.paths import benchmarks_root, evaluations_root, workspace_root
+
 
 @dataclass
 class Args:
-    eval_root: str = "/Volumes/data/checkpoints/fastvla/evals"
-    offline_root: str = "/Volumes/data/checkpoints/fastvla/offline_eval"
-    benchmark_root: str = "/Volumes/data/checkpoints/fastvla/benchmarks"
+    eval_root: str = field(default_factory=lambda: str(evaluations_root()))
+    offline_root: str = field(
+        default_factory=lambda: str(workspace_root() / "checkpoints" / "fastvla" / "offline_eval")
+    )
+    benchmark_root: str = field(default_factory=lambda: str(benchmarks_root()))
     output_dir: str = "results/confirmatory"
 
 

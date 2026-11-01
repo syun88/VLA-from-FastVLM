@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import asdict, dataclass, field
 from typing import Any, Literal
 
+from vla_fastvlm.paths import dataset_root, feature_cache_root, runs_root
+
 BackboneMode = Literal["frozen", "lora", "state_only", "vision_only"]
 
 
@@ -93,7 +95,7 @@ class FastVLAConfig:
 class DatasetConfig:
     repo_id: str = "lerobot/metaworld_mt50"
     revision: str = "a59f742d218c903328164257ecf180f9b18018a1"
-    local_root: str = "/Volumes/data/huggingface/lerobot/lerobot/metaworld_mt50"
+    local_root: str = field(default_factory=lambda: str(dataset_root()))
     tasks: tuple[str, ...] = (
         "button-press-topdown-v3",
         "push-v3",
@@ -111,8 +113,8 @@ class DatasetConfig:
 @dataclass
 class TrainConfig:
     run_name: str = "fastvla-frozen"
-    output_dir: str = "/Volumes/data/checkpoints/fastvla/runs"
-    cache_root: str = "/Volumes/data/dataset/fastvla/features"
+    output_dir: str = field(default_factory=lambda: str(runs_root()))
+    cache_root: str = field(default_factory=lambda: str(feature_cache_root()))
     seed: int = 42
     epochs: int = 40
     max_steps: int | None = None

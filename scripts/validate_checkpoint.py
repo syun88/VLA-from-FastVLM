@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import io
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import numpy as np
@@ -12,13 +12,15 @@ import tyro
 from PIL import Image
 
 from vla_fastvlm.fastvla import MLXFastVLAPolicy
+from vla_fastvlm.paths import dataset_root
 
 
 @dataclass
 class Args:
     checkpoint: str
     task: str = "reach-v3"
-    parquet: str = "/Volumes/data/huggingface/lerobot/lerobot/metaworld_mt50/data/chunk-000/file-000.parquet"
+    dataset_root: str = field(default_factory=lambda: str(dataset_root()))
+    parquet: str = ""
     row: int = 100
 
 
@@ -30,8 +32,11 @@ def main(args: Args) -> None:
     state = np.asarray(normalization["state_mean"], dtype=np.float32)
     policy = MLXFastVLAPolicy.load(checkpoint, load_backbone=True)
     image = None
+    parquet = args.parquet or str(
+        Path(args.dataset_root) / "data" / "chunk-000" / "file-000.parquet"
+    )
     if policy.config.uses_vlm:
-        table = pq.read_table(args.parquet, columns=["observation.image"])
+        table = pq.read_table(parquet, columns=["observation.image"])
         value = table["observation.image"][args.row].as_py()
         image = Image.open(io.BytesIO(value["bytes"])).convert("RGB")
     chunk, timing = policy.predict_chunk(

@@ -1,21 +1,33 @@
 #!/usr/bin/env python
 from __future__ import annotations
 
+import glob
 import json
 import shutil
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import tyro
 
 from vla_fastvlm.fastvla import MLXFastVLAPolicy
+from vla_fastvlm.paths import evaluations_root, workspace_root
 
 
 @dataclass
 class Args:
     checkpoint: str
-    output_dir: str = "/Volumes/data/checkpoints/fastvla/release_candidates/fastvla-fastvlm-05b-metaworld"
-    evaluation_glob: str = "/Volumes/data/checkpoints/fastvla/evals/**/summary.json"
+    output_dir: str = field(
+        default_factory=lambda: str(
+            workspace_root()
+            / "checkpoints"
+            / "fastvla"
+            / "release_candidates"
+            / "fastvla-fastvlm-05b-metaworld"
+        )
+    )
+    evaluation_glob: str = field(
+        default_factory=lambda: str(evaluations_root() / "**" / "summary.json")
+    )
     repo_id: str | None = None
     private: bool = True
     upload: bool = False
@@ -92,7 +104,7 @@ def main(args: Args) -> None:
     )
     shutil.copy2(Path(__file__).resolve().parents[1] / "LICENSE", output / "LICENSE-MIT.txt")
 
-    summaries = sorted(Path("/").glob(args.evaluation_glob.lstrip("/")))
+    summaries = sorted(Path(path) for path in glob.glob(args.evaluation_glob))
     metrics = _metrics_text(summaries, checkpoint)
     if policy.config.backbone_mode == "lora":
         modifications = (

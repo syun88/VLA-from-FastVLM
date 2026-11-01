@@ -1,5 +1,5 @@
 {
-  "checkpoint": "/Volumes/data/checkpoints/fastvla/pilots/pilot-button-fastvithd-seed42-seed42/final",
+  "checkpoint": "$FASTVLA_WORK_ROOT/checkpoints/fastvla/pilots/pilot-button-fastvithd-seed42-seed42/final",
   "tasks": [
     "button-press-topdown-v3"
   ],
@@ -144,7 +144,6 @@
   },
   "wandb_project": "fastvlm-vla-research",
   "wandb_run_id": "7fxsmd2b",
-  "wandb_url": "https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/7fxsmd2b",
   "wandb_mode_requested": "online",
   "wandb_mode_effective": "online",
   "wandb_error": null,

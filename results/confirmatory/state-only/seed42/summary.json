@@ -1,5 +1,5 @@
 {
-  "checkpoint": "/Volumes/data/checkpoints/fastvla/runs/state-only-seed42/best",
+  "checkpoint": "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/state-only-seed42/best",
   "tasks": [
     "button-press-topdown-v3",
     "push-v3",
@@ -1971,7 +1971,6 @@
   },
   "wandb_project": "fastvlm-vla-research",
   "wandb_run_id": "4ntj2rrr",
-  "wandb_url": "https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/4ntj2rrr",
   "wandb_mode_requested": "online",
   "wandb_mode_effective": "online",
   "wandb_error": null,

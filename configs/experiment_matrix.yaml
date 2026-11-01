@@ -10,7 +10,7 @@ dataset:
 base_model:
   id: apple/FastVLM-0.5B
   revision: 16375720c2d673fa583e57e9876afde27549c7d0
-  local_mlx_checkpoint: /Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx
+  local_mlx_checkpoint: ${FASTVLA_FASTVLM_MLX}
 
 seeds: [42, 43, 44]
 training_budget:

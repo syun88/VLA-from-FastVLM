@@ -2,7 +2,8 @@
 
 ## Local HDD first
 
-`/Volumes/data` has approximately 2.6 TB free. Current active artifacts require:
+The configured external artifact drive had approximately 2.6 TB free at audit time. Current
+active artifacts require:
 
 - FastVLM MLX checkpoint: about 1.25 GB.
 - SmolVLM comparison checkpoint: about 1 GB.
@@ -11,7 +12,8 @@
   than a duplicated 0.5B base checkpoint.
 - Selected rollout videos: a few hundred KB each.
 
-This fits comfortably within local capacity. Model repositories and local checkpoints remain
+The public documentation uses `$FASTVLA_WORK_ROOT` rather than a machine-specific path. This fits
+comfortably within local capacity. Model repositories and local checkpoints remain
 the primary active storage.
 
 ## Hugging Face Storage Buckets

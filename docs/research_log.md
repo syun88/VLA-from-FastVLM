@@ -12,10 +12,10 @@ checkpoints.
 - Foundation commit: `b6b81aa84225a054455fdb99cfe3e79b1042a912`; pushed to
   `origin/research/mlx-fastvla` and verified by `git ls-remote`.
 - Unrelated `NemoClaw/` remained untracked and untouched.
-- W&B viewer: `jimmy880510`; entity selected by W&B: `jimmy880510-`.
-- W&B project `fastvlm-vla-research` created; GraphQL reports `access: PRIVATE`.
-- Hugging Face CLI reports authenticated user `syun88` and organizations
-  `mlx-community`, `LeRobot-worldwide-hackathon`, `robotics-course`.
+- W&B project `fastvlm-vla-research` created; GraphQL reports `access: PRIVATE`. The entity is
+  intentionally resolved from local authentication and is not committed.
+- Hugging Face authentication was verified without recording the token or account metadata in
+  the repository.
 
 ### Dataset and model checks
 
@@ -33,8 +33,7 @@ checkpoints.
 
 ### Feature cache run
 
-- W&B run: `pq1rhmxv`,
-  `https://wandb.ai/jimmy880510-/fastvlm-vla-research/runs/pq1rhmxv`.
+- W&B run ID: `pq1rhmxv` in the private `fastvlm-vla-research` project.
 - Run group: `feature-cache-v1`.
 - Configuration corrected to source commit `b6b81aa` because the worker began on that exact
   working tree before the commit was created.
@@ -73,6 +72,10 @@ State-only closed-loop evaluation completed with 50 test episodes per task and t
 | 43 | 0/50 | 0/50 | 12/50 | 8.00% | `e4ar37u5` |
 | 44 | 0/50 | 0/50 | 11/50 | 7.33% | `t5utyh8z` |
 
+Frozen FastVLM seed 42 completed 50 fresh test episodes per task: 49/50 button, 2/50 push,
+10/50 reach, and 61/150 pooled. W&B run ID: `1mweq435`. This is one seed of the confirmatory
+comparison, not a cross-seed final result.
+
 The FastVLM LoRA seed-42 run completed 5,000 updates with 5,654,184 trainable parameters. A
 dedicated one-step check showed a nonzero gradient and a changed adapter norm, and the saved
 adapter was materially changed after training. Its validation normalized MSE was 0.4902 versus
@@ -100,4 +103,4 @@ head is under-trained for push and reach, so no final FastVLM conclusion is draw
   license-compliant Hugging Face release candidate.
 
 The resumable command sequence is in `README.md`; all completed checkpoints and W&B/run
-identifiers remain under `/Volumes/data/checkpoints/fastvla/` and the private W&B project.
+identifiers remain under the path selected by `FASTVLA_WORK_ROOT` and in the private W&B project.

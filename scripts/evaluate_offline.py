@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import mlx.core as mx
@@ -10,6 +10,7 @@ import numpy as np
 import tyro
 
 from vla_fastvlm.fastvla import MLXFastVLAPolicy
+from vla_fastvlm.paths import feature_cache_root, workspace_root
 from vla_fastvlm.tracking import ExperimentTracker, git_metadata, runtime_metadata
 from vla_fastvlm.training import MultiTaskCache
 
@@ -17,10 +18,12 @@ from vla_fastvlm.training import MultiTaskCache
 @dataclass
 class Args:
     checkpoint: str
-    cache_root: str = "/Volumes/data/dataset/fastvla/features"
+    cache_root: str = field(default_factory=lambda: str(feature_cache_root()))
     tasks: str = "button-press-topdown-v3,push-v3,reach-v3"
     split: str = "test"
-    output_root: str = "/Volumes/data/checkpoints/fastvla/offline_eval"
+    output_root: str = field(
+        default_factory=lambda: str(workspace_root() / "checkpoints" / "fastvla" / "offline_eval")
+    )
     wandb_project: str = "fastvlm-vla-research"
     wandb_mode: str = "online"
 

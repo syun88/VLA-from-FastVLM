@@ -3,10 +3,13 @@ from __future__ import annotations
 
 import hashlib
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import tyro
+
+from vla_fastvlm.paths import runs_root
 
 
 def condition_name(metadata: dict) -> str:
@@ -27,7 +30,7 @@ def condition_name(metadata: dict) -> str:
 
 @dataclass
 class Args:
-    runs_root: str = "/Volumes/data/checkpoints/fastvla/runs"
+    runs_root: str = ""
     output: str = "results/confirmatory/training_runs.jsonl"
 
 
@@ -43,8 +46,12 @@ def main(args: Args) -> None:
     import wandb
 
     api = wandb.Api()
+    entity = os.environ.get("WANDB_ENTITY") or getattr(api.viewer, "entity", None)
+    if not entity:
+        raise RuntimeError("Set WANDB_ENTITY or authenticate a W&B account")
     records = []
-    for metadata_path in sorted(Path(args.runs_root).glob("*/best/metadata.json")):
+    root = Path(args.runs_root) if args.runs_root else runs_root()
+    for metadata_path in sorted(root.glob("*/best/metadata.json")):
         checkpoint = metadata_path.parent
         metadata = json.loads(metadata_path.read_text(encoding="utf-8"))
         config = json.loads((checkpoint / "config.json").read_text(encoding="utf-8"))
@@ -53,7 +60,7 @@ def main(args: Args) -> None:
         validation = {}
         if run_id:
             try:
-                run = api.run(f"jimmy880510-/fastvlm-vla-research/{run_id}")
+                run = api.run(f"{entity}/fastvlm-vla-research/{run_id}")
                 validation = {
                     key: value
                     for key, value in run.summary.items()
@@ -74,7 +81,6 @@ def main(args: Args) -> None:
             "git_sha": metadata.get("git_sha"),
             "git_dirty_at_run": metadata.get("git_dirty"),
             "wandb_run_id": run_id,
-            "wandb_url": metadata.get("wandb_url"),
             "trainable_parameter_count": metadata.get("trainable_parameter_count"),
             "lora_delta_norm": metadata.get("lora_delta_norm"),
             "validation": validation,

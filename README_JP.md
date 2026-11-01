@@ -101,7 +101,11 @@ Manifest: [`manifests/metaworld_mt50/v1`](manifests/metaworld_mt50/v1)
 macOS / Apple Silicon、Python 3.12、MLX 0.31 系を前提にしています。
 
 ```bash
-cd /Users/syun/python_project/VLA-from-FastVLM
+cd /path/to/VLA-from-FastVLM
+export FASTVLA_WORK_ROOT=/path/to/local/fastvla-storage
+export HF_HOME=/path/to/huggingface-cache
+export FASTVLA_FASTVLM_MLX="$FASTVLA_WORK_ROOT/models/apple-fastvlm-0.5b-mlx"
+export FASTVLA_DATASET_ROOT="$HF_HOME/hub/datasets--lerobot--metaworld_mt50/snapshots/a59f742d218c903328164257ecf180f9b18018a1"
 uv pip install --python python3 -e '.[dev,sim]'
 wandb login --verify
 hf auth whoami
@@ -119,8 +123,8 @@ W&B / Hugging Face の token は表示・保存・commit しません。W&B は
 
 ```bash
 python3 -m mlx_vlm convert \
-  --hf-path /Volumes/data/huggingface/transformers/models--apple--FastVLM-0.5B/snapshots/16375720c2d673fa583e57e9876afde27549c7d0 \
-  --mlx-path /Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx \
+  --hf-path /path/to/apple/FastVLM-0.5B/snapshot \
+  --mlx-path "$FASTVLA_FASTVLM_MLX" \
   --dtype bfloat16
 ```
 
@@ -165,7 +169,7 @@ MLX の trainable parameter は seed 42 で 5,654,184 でした。1 step の確�
 
 ```bash
 python3 scripts/evaluate_offline.py \
-  --checkpoint /Volumes/data/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best \
+  --checkpoint "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best" \
   --wandb-mode online
 ```
 
@@ -175,7 +179,7 @@ Offline action error は closed-loop success の代替ではありません。
 
 ```bash
 python3 scripts/evaluate_sim.py \
-  --checkpoint /Volumes/data/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best \
+  --checkpoint "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best" \
   --episodes 50 \
   --seed-start 300000 \
   --run-name confirm-fastvlm-frozen-seed42 \
@@ -190,7 +194,7 @@ Counterfactual instruction の評価では `--counterfactual` を追加します
 
 ```bash
 python3 scripts/benchmark_policy.py \
-  --checkpoint /Volumes/data/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best \
+  --checkpoint "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best" \
   --task reach-v3 \
   --iterations 30 \
   --resolutions 256,512,768,1024 \
@@ -218,12 +222,12 @@ python3 scripts/build_paper_results.py
 
 ```bash
 python3 scripts/validate_checkpoint.py \
-  --checkpoint /Volumes/data/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best \
+  --checkpoint "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best" \
   --task reach-v3
 
 python3 scripts/prepare_model_release.py \
-  --checkpoint /Volumes/data/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best \
-  --output-dir /Volumes/data/checkpoints/fastvla/release_candidates/fastvlm-vla
+  --checkpoint "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best" \
+  --output-dir "$FASTVLA_WORK_ROOT/checkpoints/fastvla/release_candidates/fastvlm-vla"
 ```
 
 `prepare_model_release.py` は `apple-amlr` の完全な license、attribution、派生であること、
@@ -257,7 +261,7 @@ CI/CD 修正 commit `4eff940` の GitHub Actions run は成功済みです。
 - Offline W&B run は sync 可能。local result JSON が正本
 - Hugging Face: `syun88` の制約下で、license を満たす場合のみ研究用 checkpoint / adapter を公開
 - Dataset bytes は license を確認し、無断で再配布しない
-- HF Storage Bucket は不要と判断。`/Volumes/data` に 2.6 TB の空きがあり、artifact は数 GB。
+- HF Storage Bucket は不要と判断。外部 HDD に十分な空きがあり、artifact は数 GB。
   有料 storage の追加や plan 変更はしません
 
 Apple FastVLM の weights は `apple-amlr` です。MIT の source-code license は weights に適用されません。

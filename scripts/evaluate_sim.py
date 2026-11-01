@@ -3,12 +3,13 @@ from __future__ import annotations
 
 import json
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 
 import tyro
 
 from vla_fastvlm.evaluation import evaluate_policy
+from vla_fastvlm.paths import evaluations_root
 from vla_fastvlm.tracking import ExperimentTracker, git_metadata, runtime_metadata
 
 
@@ -20,7 +21,7 @@ class Args:
     replan_steps: int = 8
     max_steps: int = 500
     seed_start: int = 300000
-    output_root: str = "/Volumes/data/checkpoints/fastvla/evals"
+    output_root: str = field(default_factory=lambda: str(evaluations_root()))
     run_name: str = "fastvla-closed-loop"
     group: str = "fastvla-confirmatory"
     counterfactual: bool = False

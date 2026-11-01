@@ -38,7 +38,7 @@ The code is constructed around one scientific question with explicit negative ou
 - State-only, spatial-only, global-only, and frozen/LoRA ablations.
 - Local Meta-World closed-loop evaluation with native success, failure categories, stability,
   generalization seeds, nominal/counterfactual instructions, and latency distributions.
-- W&B provenance plus local resumable checkpoints on `/Volumes/data`.
+- W&B provenance plus resumable local checkpoints under configurable artifact storage.
 
 The original PyTorch implementation is preserved under `legacy/torch_v01/` and is not imported
 or supported by the active package.
@@ -58,7 +58,11 @@ This roadmap is not a claim that unchecked items are complete.
 ## Setup
 
 ```bash
-cd /Users/syun/python_project/VLA-from-FastVLM
+cd /path/to/VLA-from-FastVLM
+export FASTVLA_WORK_ROOT=/path/to/local/fastvla-storage
+export HF_HOME=/path/to/huggingface-cache
+export FASTVLA_FASTVLM_MLX="$FASTVLA_WORK_ROOT/models/apple-fastvlm-0.5b-mlx"
+export FASTVLA_DATASET_ROOT="$HF_HOME/hub/datasets--lerobot--metaworld_mt50/snapshots/a59f742d218c903328164257ecf180f9b18018a1"
 uv pip install --python python3 -e '.[dev,sim]'
 wandb login --verify       # credentials remain in the local credential store
 hf auth whoami             # do not copy or print the token
@@ -72,8 +76,8 @@ cloud GPU.
 ```bash
 # Offline, isolated checkpoint-format conversion from the already cached Apple weights.
 python3 -m mlx_vlm convert \
-  --hf-path /Volumes/data/huggingface/transformers/models--apple--FastVLM-0.5B/snapshots/16375720c2d673fa583e57e9876afde27549c7d0 \
-  --mlx-path /Volumes/data/checkpoints/fastvla/models/apple-fastvlm-0.5b-mlx \
+  --hf-path /path/to/apple/FastVLM-0.5B/snapshot \
+  --mlx-path "$FASTVLA_FASTVLM_MLX" \
   --dtype bfloat16
 
 # Cache projected FastViTHD tokens and FastVLM hidden states; resumable every 10 samples.
@@ -90,11 +94,11 @@ python3 scripts/train_lora.py \
 
 # Offline held-out action error.
 python3 scripts/evaluate_offline.py \
-  --checkpoint /Volumes/data/checkpoints/fastvla/runs/fastvlm-frozen-seed42/final
+  --checkpoint "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best"
 
 # Closed-loop Meta-World evaluation.
 python3 scripts/evaluate_sim.py \
-  --checkpoint /Volumes/data/checkpoints/fastvla/runs/fastvlm-frozen-seed42/final \
+  --checkpoint "$FASTVLA_WORK_ROOT/checkpoints/fastvla/runs/fastvlm-frozen-seed42/best" \
   --episodes 50
 ```
 
