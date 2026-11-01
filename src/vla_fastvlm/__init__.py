@@ -2,19 +2,14 @@
 VLA-from-FastVLM
 ================
 
-Python package that adapts Apple's FastVLM vision-language model with an action head for
-robotic manipulation tasks trained on LeRobot datasets.
+MLX-native research package for adapting Apple's FastVLM to robotic action chunking.
 """
 
-from .device import get_best_device, is_cuda_available, is_mps_available
-from .model.policy import FastVLMPolicy
-from .fastvla import FastVLAConfig, FastVLAPolicy
+from .fastvla.configuration_fastvla import FastVLAConfig
+from .fastvla.modeling_fastvla import ActionPolicy, MLXFastVLAPolicy
 
 __all__ = [
-    "get_best_device",
-    "is_cuda_available",
-    "is_mps_available",
-    "FastVLMPolicy",
     "FastVLAConfig",
-    "FastVLAPolicy",
+    "ActionPolicy",
+    "MLXFastVLAPolicy",
 ]

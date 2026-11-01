@@ -1,3 +1,3 @@
-from .trainer import TrainingConfig, Trainer
+from .trainer import CachedActionTrainer, LoRAActionTrainer, MultiTaskCache
 
-__all__ = ["TrainingConfig", "Trainer"]
+__all__ = ["CachedActionTrainer", "LoRAActionTrainer", "MultiTaskCache"]

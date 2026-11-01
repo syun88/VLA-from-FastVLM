@@ -1,10 +1,9 @@
 
 import logging
 import sys
-from typing import Optional
 
 
-def configure_logging(level: int = logging.INFO, name: Optional[str] = None) -> None:
+def configure_logging(level: int = logging.INFO, name: str | None = None) -> None:
     logger = logging.getLogger(name)
     handler_exists = any(isinstance(handler, logging.StreamHandler) for handler in logger.handlers)
     if not handler_exists:
